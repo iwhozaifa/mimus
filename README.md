@@ -7,6 +7,7 @@ This is **V1, first stage: web app only**. See [`PLAN.md`](./PLAN.md) for the fu
 ## Tech stack
 
 - **Framework:** Next.js 16 (App Router, Turbopack, Cache Components) + TypeScript, React 19
+- **Styling:** Tailwind CSS v4 (CSS-first config)
 - **Database/Auth:** Supabase (Postgres, Row-Level Security, magic-link Auth) — the permission boundary lives in RLS policies, not application code
 - **Billing:** Stripe (checkout + webhooks)
 - **Email:** Resend
@@ -42,6 +43,21 @@ npm run dev          # dev server at http://127.0.0.1:3000
 ```
 
 Sign-in emails land in Mailpit at `http://127.0.0.1:54324` (nothing is sent to a real inbox locally). Supabase Studio is at `http://127.0.0.1:54323`.
+
+## Pages
+
+Sign in to reach the app shell at these routes:
+
+| Route                   | What it's for                                                                       |
+| ----------------------- | ----------------------------------------------------------------------------------- |
+| `/dashboard`            | Workspace name, your role, read-only banner when billing is past due                |
+| `/members`              | Invite teammates, change roles, remove members                                      |
+| `/settings/connections` | Connect a (stub) account and set its visibility (private/team/company)              |
+| `/billing`              | Plans and current subscription, Stripe Checkout button                              |
+| `/feature-switches`     | Owner-only toggles for the four product areas (money/pipeline/projects/canopy)      |
+| `/audit-log`            | Placeholder — becomes the AI agent activity log once the agent ships (Milestone 4+) |
+
+`/billing`'s checkout button calls real Stripe Checkout code but has no test-mode keys configured yet (`STRIPE_SECRET_KEY` is blank in `.env.example`) — it will error until those are added.
 
 ## Testing
 
