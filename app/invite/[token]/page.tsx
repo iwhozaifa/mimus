@@ -1,12 +1,14 @@
 import { createClient } from '@/src/db/server';
 import { acceptInvite } from '@/src/server/invites/acceptInvite';
 import Link from 'next/link';
+import { connection } from 'next/server';
 
 // Inherently a one-time, fully dynamic action (token param, session cookie,
 // a DB write) -- not a candidate for a prerendered shell.
 export const instant = false;
 
 export default async function InvitePage({ params }: { params: Promise<{ token: string }> }) {
+  await connection();
   const { token } = await params;
 
   const supabase = await createClient();
