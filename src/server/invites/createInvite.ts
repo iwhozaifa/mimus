@@ -1,4 +1,5 @@
 import { createServiceClient } from '@/src/db/service';
+import { assertWorkspaceWritable } from '@/src/server/billing/killSwitch';
 import { canInviteWithRole, type WorkspaceRole } from '@/src/server/permissions/roles';
 import { sendInviteEmail } from '@/src/server/email/sendInviteEmail';
 import { randomUUID } from 'node:crypto';
@@ -17,6 +18,7 @@ export async function createInvite(params: {
   if (!allowed) {
     throw new Error('Not allowed to invite at this role');
   }
+  await assertWorkspaceWritable(params.workspaceId);
 
   const supabase = createServiceClient();
   const { data: inviter } = await supabase

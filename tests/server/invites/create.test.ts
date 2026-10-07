@@ -104,4 +104,42 @@ describe('createInvite', () => {
 
     expect(sendInviteEmail).not.toHaveBeenCalled();
   });
+
+  it('rejects inviting into a read-only (past-due) workspace, and sends no email', async () => {
+    const { data: company } = await supabase
+      .from('companies')
+      .insert({ name: 'Read-only invite test co' })
+      .select('id')
+      .single()
+      .throwOnError();
+    const { data: readOnlyWorkspace } = await supabase
+      .from('workspaces')
+      .insert({ company_id: company!.id, name: 'Read-only invite test ws' })
+      .select('id')
+      .single()
+      .throwOnError();
+    const readOnlyWorkspaceId = readOnlyWorkspace!.id as string;
+
+    await supabase
+      .from('workspace_members')
+      .insert({ workspace_id: readOnlyWorkspaceId, user_id: ownerId, role: 'owner' })
+      .throwOnError();
+    await supabase
+      .from('workspace_subscriptions')
+      .insert({ workspace_id: readOnlyWorkspaceId, status: 'past_due' })
+      .throwOnError();
+
+    await expect(
+      createInvite({
+        workspaceId: readOnlyWorkspaceId,
+        workspaceName: 'Read-only invite test ws',
+        invitedByUserId: ownerId,
+        email: 'blocked-read-only@example.com',
+        role: 'member',
+        baseUrl: 'http://127.0.0.1:3000',
+      }),
+    ).rejects.toThrow(/read-only/i);
+
+    expect(sendInviteEmail).not.toHaveBeenCalled();
+  });
 });

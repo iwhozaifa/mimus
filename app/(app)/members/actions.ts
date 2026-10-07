@@ -1,5 +1,6 @@
 'use server';
 
+import { assertWorkspaceWritable } from '@/src/server/billing/killSwitch';
 import { createInvite } from '@/src/server/invites/createInvite';
 import { getBaseUrl } from '@/src/server/http/getBaseUrl';
 import type { WorkspaceRole } from '@/src/server/permissions/roles';
@@ -32,6 +33,7 @@ export async function changeMemberRole(memberId: string, newRole: WorkspaceRole)
   if (!context) {
     throw new Error('Not signed in');
   }
+  await assertWorkspaceWritable(context.workspaceId);
 
   const { error } = await context.supabase
     .from('workspace_members')
@@ -46,6 +48,7 @@ export async function removeMember(memberId: string) {
   if (!context) {
     throw new Error('Not signed in');
   }
+  await assertWorkspaceWritable(context.workspaceId);
 
   const { error } = await context.supabase
     .from('workspace_members')

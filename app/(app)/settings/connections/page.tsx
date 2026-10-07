@@ -40,7 +40,7 @@ async function ConnectionsList() {
 
   async function connect() {
     'use server';
-    await connectStubAccount(workspaceId);
+    await connectStubAccount();
   }
 
   return (
