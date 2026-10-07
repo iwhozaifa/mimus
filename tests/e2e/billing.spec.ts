@@ -25,10 +25,10 @@ test('billing page renders either the empty-plans state or a real plan list', as
   }
 });
 
-test('a read-only workspace shows the banner on dashboard and billing', async ({ page }) => {
+test('a read-only workspace shows the banner on Sky and billing', async ({ page }) => {
   const email = `e2e-billing-readonly-${Date.now()}@example.com`;
   await signInViaMagicLink(page, email);
-  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page).toHaveURL(/\/sky$/);
 
   const supabase = createServiceClient();
   const { data: profile } = await supabase

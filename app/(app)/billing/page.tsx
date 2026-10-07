@@ -1,14 +1,14 @@
-import { isWorkspaceReadOnly } from '@/src/server/billing/killSwitch';
 import { getCurrentWorkspaceContext } from '@/src/server/workspaces/getCurrentWorkspaceContext';
 import Link from 'next/link';
 import { connection } from 'next/server';
 import { Suspense } from 'react';
-import { ReadOnlyBanner } from '../read-only-banner';
+import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
 import { SubscribeButton } from './subscribe-button';
 
 export default function BillingPage() {
   return (
-    <Suspense fallback={<p className="text-slate-500">Loading…</p>}>
+    <Suspense fallback={<p className="text-ink-muted">Loading…</p>}>
       <BillingContent />
     </Suspense>
   );
@@ -20,14 +20,14 @@ async function BillingContent() {
 
   if (!context) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <Card>
         <Link
           href="/sign-in?next=/billing"
-          className="font-medium text-indigo-600 hover:text-indigo-500"
+          className="font-medium text-accent-strong hover:text-accent"
         >
           Sign in
         </Link>
-      </div>
+      </Card>
     );
   }
 
@@ -48,48 +48,39 @@ async function BillingContent() {
       plans: { name: string; feature_defaults: Record<string, boolean> } | null;
     }>();
 
-  const readOnly = await isWorkspaceReadOnly(workspaceId);
-
   return (
-    <div>
-      <ReadOnlyBanner isReadOnly={readOnly} />
-      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h1 className="mb-4 text-2xl font-semibold text-slate-900">Billing</h1>
+    <Card>
+      <h1 className="mb-4 text-2xl font-semibold text-ink">Billing</h1>
 
-        {(plans ?? []).length === 0 && (
-          <p className="text-sm text-slate-500">No plans configured yet.</p>
-        )}
+      {(plans ?? []).length === 0 && (
+        <p className="text-sm text-ink-muted">No plans configured yet.</p>
+      )}
 
-        <ul className="flex flex-col gap-3">
-          {(plans ?? []).map((plan) => {
-            const current = subscription?.plan_id === plan.id ? subscription : null;
-            const isCurrent = current !== null;
-            return (
-              <li
-                key={plan.id}
-                className="flex items-center justify-between gap-4 rounded-md border border-slate-200 p-3"
-              >
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-slate-800">{plan.name}</span>
-                    {current && (
-                      <span className="inline-block rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium capitalize text-emerald-700">
-                        {current.status}
-                      </span>
-                    )}
-                  </div>
-                  {current?.current_period_end && (
-                    <p className="mt-1 text-xs text-slate-500">
-                      Renews {new Date(current.current_period_end).toLocaleDateString()}
-                    </p>
-                  )}
+      <ul className="flex flex-col gap-3">
+        {(plans ?? []).map((plan) => {
+          const current = subscription?.plan_id === plan.id ? subscription : null;
+          const isCurrent = current !== null;
+          return (
+            <li
+              key={plan.id}
+              className="flex items-center justify-between gap-4 rounded-md border border-line-muted p-3"
+            >
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-ink">{plan.name}</span>
+                  {current && <Badge variant="accent-soft">{current.status}</Badge>}
                 </div>
-                {!isCurrent && role === 'owner' && <SubscribeButton planId={plan.id} />}
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-    </div>
+                {current?.current_period_end && (
+                  <p className="mt-1 text-xs text-ink-faint">
+                    Renews {new Date(current.current_period_end).toLocaleDateString()}
+                  </p>
+                )}
+              </div>
+              {!isCurrent && role === 'owner' && <SubscribeButton planId={plan.id} />}
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
   );
 }

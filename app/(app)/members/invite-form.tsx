@@ -2,6 +2,8 @@
 
 import type { WorkspaceRole } from '@/src/server/permissions/roles';
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { inviteMember } from './actions';
 
 export function InviteForm({ viewerRole }: { viewerRole: 'owner' | 'manager' }) {
@@ -11,8 +13,8 @@ export function InviteForm({ viewerRole }: { viewerRole: 'owner' | 'manager' }) 
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="mb-4 text-lg font-semibold text-slate-900">Invite a teammate</h2>
+    <Card>
+      <h2 className="mb-4 text-lg font-semibold text-ink">Invite a teammate</h2>
       <form
         onSubmit={async (event) => {
           event.preventDefault();
@@ -30,40 +32,36 @@ export function InviteForm({ viewerRole }: { viewerRole: 'owner' | 'manager' }) 
         }}
         className="flex flex-wrap items-end gap-3"
       >
-        <label className="flex flex-col gap-1 text-sm text-slate-700">
+        <label className="flex flex-col gap-1 text-sm text-ink-muted">
           Email
           <input
             type="email"
             required
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className="rounded-md border border-slate-200 px-3 py-2 text-sm"
+            className="rounded-md border border-line-muted px-3 py-2 text-sm text-ink"
           />
         </label>
-        <label className="flex flex-col gap-1 text-sm text-slate-700">
+        <label className="flex flex-col gap-1 text-sm text-ink-muted">
           Role
           <select
             value={role}
             onChange={(event) => setRole(event.target.value as WorkspaceRole)}
-            className="rounded-md border border-slate-200 px-3 py-2 text-sm"
+            className="rounded-md border border-line-muted px-3 py-2 text-sm text-ink"
           >
             {viewerRole === 'owner' && <option value="manager">Manager</option>}
             <option value="member">Member</option>
           </select>
         </label>
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
-        >
+        <Button type="submit" disabled={pending}>
           Send invite
-        </button>
+        </Button>
       </form>
       {error && (
-        <p role="alert" className="mt-2 text-sm text-red-600">
+        <p role="alert" className="mt-2 text-sm text-danger">
           {error}
         </p>
       )}
-    </div>
+    </Card>
   );
 }

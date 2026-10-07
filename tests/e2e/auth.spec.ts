@@ -5,8 +5,8 @@ test('sign in with a magic link persists a session', async ({ page }) => {
   const email = `e2e-${Date.now()}@example.com`;
 
   await signInViaMagicLink(page, email);
-  await expect(page.getByText(email)).toBeVisible();
+  await expect(page.getByRole('heading', { name: /good morning/i })).toBeVisible();
 
   await page.reload();
-  await expect(page.getByText(email)).toBeVisible();
+  await expect(page.getByRole('heading', { name: /good morning/i })).toBeVisible();
 });

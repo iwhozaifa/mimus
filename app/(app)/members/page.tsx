@@ -2,13 +2,15 @@ import { getCurrentWorkspaceContext } from '@/src/server/workspaces/getCurrentWo
 import Link from 'next/link';
 import { connection } from 'next/server';
 import { Suspense } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
 import { InviteForm } from './invite-form';
 import { RemoveButton } from './remove-button';
 import { RoleSelect } from './role-select';
 
 export default function MembersPage() {
   return (
-    <Suspense fallback={<p className="text-slate-500">Loading…</p>}>
+    <Suspense fallback={<p className="text-ink-muted">Loading…</p>}>
       <MembersList />
     </Suspense>
   );
@@ -20,14 +22,14 @@ async function MembersList() {
 
   if (!context) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <Card>
         <Link
           href="/sign-in?next=/members"
-          className="font-medium text-indigo-600 hover:text-indigo-500"
+          className="font-medium text-accent-strong hover:text-accent"
         >
           Sign in
         </Link>
-      </div>
+      </Card>
     );
   }
 
@@ -49,9 +51,9 @@ async function MembersList() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h1 className="mb-4 text-2xl font-semibold text-slate-900">Members</h1>
-        <ul className="flex flex-col gap-3">
+      <Card>
+        <h1 className="mb-4 text-2xl font-semibold text-ink">Members</h1>
+        <ul className="flex flex-col divide-y divide-line-muted">
           {(members ?? []).map((member) => {
             const canManage =
               viewerRole === 'owner'
@@ -64,15 +66,13 @@ async function MembersList() {
             return (
               <li
                 key={member.id}
-                className="flex items-center justify-between gap-4 rounded-md border border-slate-200 p-3"
+                className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
               >
                 <div className="flex items-center gap-3">
-                  <span className="font-medium text-slate-800">
+                  <span className="font-medium text-ink">
                     {emailByUserId.get(member.user_id) ?? member.user_id}
                   </span>
-                  <span className="inline-block rounded-full bg-indigo-50 px-3 py-1 text-xs font-medium capitalize text-indigo-700">
-                    {member.role}
-                  </span>
+                  <Badge variant="accent-soft">{member.role}</Badge>
                 </div>
                 {showControls && (
                   <div className="flex items-center gap-3">
@@ -86,10 +86,10 @@ async function MembersList() {
             );
           })}
           {(members ?? []).length === 0 && (
-            <li className="text-sm text-slate-500">No members yet.</li>
+            <li className="text-sm text-ink-muted">No members yet.</li>
           )}
         </ul>
-      </div>
+      </Card>
       {(viewerRole === 'owner' || viewerRole === 'manager') && (
         <InviteForm viewerRole={viewerRole} />
       )}

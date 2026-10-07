@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { startCheckout } from './actions';
 
 export function SubscribeButton({ planId }: { planId: string }) {
@@ -9,8 +10,7 @@ export function SubscribeButton({ planId }: { planId: string }) {
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <button
-        type="button"
+      <Button
         disabled={pending}
         onClick={async () => {
           setPending(true);
@@ -23,12 +23,11 @@ export function SubscribeButton({ planId }: { planId: string }) {
             setPending(false);
           }
         }}
-        className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
       >
         Subscribe
-      </button>
+      </Button>
       {error && (
-        <p role="alert" className="text-xs text-red-600">
+        <p role="alert" className="text-xs text-danger">
           {error}
         </p>
       )}

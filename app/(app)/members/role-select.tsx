@@ -24,13 +24,13 @@ export function RoleSelect({ memberId, role }: { memberId: string; role: 'manage
             setPending(false);
           }
         }}
-        className="rounded-md border border-slate-200 px-2 py-1 text-sm text-slate-700 disabled:opacity-50"
+        className="rounded-md border border-line-muted px-2 py-1 text-sm text-ink disabled:opacity-50"
       >
         <option value="manager">Manager</option>
         <option value="member">Member</option>
       </select>
       {error && (
-        <p role="alert" className="text-xs text-red-600">
+        <p role="alert" className="text-xs text-danger">
           {error}
         </p>
       )}

@@ -5,6 +5,7 @@ export type WorkspaceContext = {
   supabase: SupabaseClient;
   userId: string;
   email: string;
+  fullName: string | null;
   workspaceId: string;
   workspaceName: string;
   role: 'owner' | 'manager' | 'member';
@@ -36,10 +37,17 @@ export async function getCurrentWorkspaceContext(): Promise<WorkspaceContext | n
     return null;
   }
 
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name')
+    .eq('id', userId)
+    .maybeSingle<{ full_name: string | null }>();
+
   return {
     supabase,
     userId,
     email,
+    fullName: profile?.full_name ?? null,
     workspaceId: membership.workspace_id,
     workspaceName: membership.workspaces?.name ?? '',
     role: membership.role,

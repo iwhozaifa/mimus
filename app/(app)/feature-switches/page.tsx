@@ -3,6 +3,7 @@ import { getCurrentWorkspaceContext } from '@/src/server/workspaces/getCurrentWo
 import Link from 'next/link';
 import { connection } from 'next/server';
 import { Suspense } from 'react';
+import { Card } from '@/components/ui/card';
 import { ToggleSwitch } from './toggle-switch';
 
 const HARDCODED_KEYS = ['money', 'pipeline', 'projects', 'canopy'];
@@ -13,7 +14,7 @@ function labelFor(key: string): string {
 
 export default function FeatureSwitchesPage() {
   return (
-    <Suspense fallback={<p className="text-slate-500">Loading…</p>}>
+    <Suspense fallback={<p className="text-ink-muted">Loading…</p>}>
       <FeatureSwitchesContent />
     </Suspense>
   );
@@ -25,14 +26,14 @@ async function FeatureSwitchesContent() {
 
   if (!context) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <Card>
         <Link
           href="/sign-in?next=/feature-switches"
-          className="font-medium text-indigo-600 hover:text-indigo-500"
+          className="font-medium text-accent-strong hover:text-accent"
         >
           Sign in
         </Link>
-      </div>
+      </Card>
     );
   }
 
@@ -40,10 +41,10 @@ async function FeatureSwitchesContent() {
 
   if (role !== 'owner') {
     return (
-      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-        <h1 className="mb-2 text-2xl font-semibold text-slate-900">Feature switches</h1>
-        <p className="text-sm text-slate-500">Only workspace owners can manage feature switches.</p>
-      </div>
+      <Card>
+        <h1 className="mb-2 text-2xl font-semibold text-ink">Feature switches</h1>
+        <p className="text-sm text-ink-muted">Only workspace owners can manage feature switches.</p>
+      </Card>
     );
   }
 
@@ -68,22 +69,22 @@ async function FeatureSwitchesContent() {
   );
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-      <h1 className="mb-1 text-2xl font-semibold text-slate-900">Feature switches</h1>
-      <p className="mb-4 text-sm text-slate-500">
+    <Card>
+      <h1 className="mb-1 text-2xl font-semibold text-ink">Feature switches</h1>
+      <p className="mb-4 text-sm text-ink-muted">
         Admin configuration only — none of these have a product page in this app yet.
       </p>
-      <ul className="flex flex-col gap-3">
+      <ul className="flex flex-col divide-y divide-line-muted">
         {switches.map(({ key, enabled }) => (
           <li
             key={key}
-            className="flex items-center justify-between gap-4 rounded-md border border-slate-200 p-3"
+            className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
           >
-            <span className="font-medium text-slate-800">{labelFor(key)}</span>
+            <span className="font-medium text-ink">{labelFor(key)}</span>
             <ToggleSwitch label={labelFor(key)} feKey={key} enabled={enabled} />
           </li>
         ))}
       </ul>
-    </div>
+    </Card>
   );
 }

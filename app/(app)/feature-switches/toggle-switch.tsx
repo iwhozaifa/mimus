@@ -17,7 +17,7 @@ export function ToggleSwitch({
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <label className="flex items-center gap-2 text-sm text-slate-700">
+      <label className="flex items-center gap-2 text-sm text-ink-muted">
         <input
           type="checkbox"
           defaultChecked={enabled}
@@ -36,11 +36,11 @@ export function ToggleSwitch({
               setPending(false);
             }
           }}
-          className="h-4 w-4 rounded border-slate-300 text-indigo-600 disabled:opacity-50"
+          className="h-4 w-4 rounded border-line-muted text-accent accent-[var(--color-accent)] disabled:opacity-50"
         />
       </label>
       {error && (
-        <p role="alert" className="text-xs text-red-600">
+        <p role="alert" className="text-xs text-danger">
           {error}
         </p>
       )}
