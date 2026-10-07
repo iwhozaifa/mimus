@@ -38,6 +38,8 @@ const eslintConfig = defineConfig([
     'test-results/**',
     'supabase/.branches/**',
     'supabase/.temp/**',
+    // Deno runtime, not part of the Next.js app's lint/type scope.
+    'supabase/functions/**',
   ]),
 ]);
 
