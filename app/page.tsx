@@ -1,8 +1,8 @@
-import { createClient } from '@/src/db/server';
+import { getCurrentWorkspaceContext } from '@/src/server/workspaces/getCurrentWorkspaceContext';
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { connection } from 'next/server';
 import { Suspense } from 'react';
-import { SignOutButton } from './sign-out-button';
 
 export default function Home() {
   return (
@@ -22,11 +22,9 @@ async function AuthStatus() {
   // expiry against Date.now() -- otherwise Next's prerender analysis flags
   // that clock read as an unstable value, even inside this Suspense boundary.
   await connection();
-  const supabase = await createClient();
-  const { data } = await supabase.auth.getClaims();
-  const email = data?.claims.email as string | undefined;
+  const context = await getCurrentWorkspaceContext();
 
-  if (!email) {
+  if (!context) {
     return (
       <Link href="/sign-in" className="font-medium text-indigo-600 hover:text-indigo-500">
         Sign in
@@ -34,12 +32,5 @@ async function AuthStatus() {
     );
   }
 
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <p className="text-slate-700">
-        Signed in as <span className="font-medium text-slate-900">{email}</span>
-      </p>
-      <SignOutButton />
-    </div>
-  );
+  redirect('/dashboard');
 }

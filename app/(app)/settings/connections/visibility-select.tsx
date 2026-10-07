@@ -18,6 +18,7 @@ export function VisibilitySelect({
           event.target.value as 'private' | 'team' | 'company',
         );
       }}
+      className="rounded-md border border-slate-200 px-2 py-1 text-sm text-slate-700"
     >
       <option value="private">Private</option>
       <option value="team">Team</option>

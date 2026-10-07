@@ -8,8 +8,9 @@ select has_table('public', 'workspaces', 'workspaces table exists');
 select has_table('public', 'workspace_members', 'workspace_members table exists');
 select has_table('public', 'invites', 'invites table exists');
 
--- RLS is enabled (deny-by-default: no policies yet, so enabling RLS alone
--- blocks all non-owner access until §1.5 adds the role-based policies)
+-- RLS is enabled (deny-by-default: enabling RLS alone blocks all access
+-- until a policy grants it -- workspaces now has a SELECT policy for
+-- active members, added in 0010_workspaces_select.sql)
 select is(
   (select relrowsecurity from pg_class where oid = 'public.workspaces'::regclass),
   true,
@@ -46,10 +47,11 @@ select is(
   'fixture: workspace A has one member (checked as bypass role)'
 );
 
--- As an authenticated non-member of workspace A (member of workspace B only),
--- RLS must return zero rows for workspace A's data (deny-by-default: no
--- policies have been added yet, so this also holds for workspace B's own
--- member querying their own workspace -- that gap closes in §1.5).
+-- As an authenticated non-member of workspace A (member of workspace B only):
+-- still zero rows for workspace A's data (workspace_members has no
+-- peer-visibility policy yet -- that gap closes separately), but workspace
+-- B's own owner now sees their own workspace row via the SELECT policy
+-- added in 0010_workspaces_select.sql.
 set local role authenticated;
 set local request.jwt.claims to '{"sub":"22222222-2222-2222-2222-222222222222","role":"authenticated"}';
 
@@ -65,8 +67,8 @@ select is(
 );
 select is(
   (select count(*)::int from workspaces where id = 'bbbbbbbb-0000-0000-0000-000000000002'),
-  0,
-  'even workspace B''s own owner sees 0 rows pre-policy (deny-by-default, no policies yet)'
+  1,
+  'workspace B''s own owner can see their own workspace (0010_workspaces_select policy)'
 );
 
 reset role;
