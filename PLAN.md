@@ -1,6 +1,6 @@
 # Mimus V1 (First Stage, Web App) — Implementation Plan
 
-> **Status (2026-10-07):** Milestone 1 (Foundation) is complete — all 16 tasks merged. Milestone 2 (Google, then Microsoft connectors) is next. See `AGENTS.md` for the practices this plan established.
+> **Status (2026-10-07):** Milestone 1 (Foundation) is complete — all 16 tasks merged. The Sky/Canopy/Ground front-end redesign (PR #28) also landed ahead of schedule, against client-supplied mockups and mock/sample data — see the note under Milestone 6. Milestone 2 (Google, then Microsoft connectors) is next for backend work. See `AGENTS.md` for the practices this plan established.
 
 ## Context
 
@@ -167,7 +167,13 @@ Each AI skill declares `{ name, nature, defaultTier, defaultPriority, needs: { s
 
 ### Milestone 6 — Sky, Ground, morning brief, Settings; full testing → Web V1 live
 
-- `app/(app)/sky/page.tsx` (tiles against the widget registry), `app/(app)/ground/[personId]/page.tsx`, `supabase/functions/morning-brief` cron, full Settings (connections, roles, scheduling rules, owner-only AI usage log, billing).
+> **Sky/Ground UI shell: ✅ already built ahead of schedule (PR #28, merged 2026-10-07)**, superseding the two bullet points below in both scope and shape:
+>
+> - `app/(app)/sky/page.tsx` is the client's exec-KPI-dashboard concept (cash on hand, revenue, pipeline, team load, a "Needs you" list, today's schedule, a departments grid) — not the originally-planned drag-and-drop widget-tile dashboard against a widget registry. The `src/server/widgets/types.ts` manifest described above was never built; this UI doesn't need it.
+> - `app/(app)/ground/[dealId]/page.tsx` is per-**deal** (timeline, people, files, an AI "why it's stalled" panel), not per-**person** as originally spec'd (`[personId]`). A new `app/(app)/canopy/[department]/page.tsx` (department kanban + AI insight rail) was also added — not in the original plan at all.
+> - All three run entirely on a typed mock-data module (`src/mock/`) — there is still no real `deals`/`pipeline`/`departments`/`revenue` schema. **Still pending from this milestone:** wiring Sky/Canopy/Ground to real data (once connectors/AI below exist), the morning-brief cron, and full Settings (scheduling rules, owner-only AI usage log beyond the current placeholder).
+
+- `supabase/functions/morning-brief` cron, full Settings (connections, roles, scheduling rules, owner-only AI usage log, billing).
 - Tests first: Playwright per screen; widget-permission test (a Member never sees a tile backed by data they can't see, even though the tile renders).
 - DoD: feature-complete staging demo covering the full 7-step AI path end to end; full regression suite green.
 
