@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { removeMember } from './actions';
 
 export function RemoveButton({ memberId }: { memberId: string }) {
@@ -9,8 +10,9 @@ export function RemoveButton({ memberId }: { memberId: string }) {
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <button
-        type="button"
+      <Button
+        variant="danger"
+        size="sm"
         disabled={pending}
         onClick={async () => {
           setPending(true);
@@ -23,12 +25,11 @@ export function RemoveButton({ memberId }: { memberId: string }) {
             setPending(false);
           }
         }}
-        className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
       >
         Remove
-      </button>
+      </Button>
       {error && (
-        <p role="alert" className="text-xs text-red-600">
+        <p role="alert" className="text-xs text-danger">
           {error}
         </p>
       )}

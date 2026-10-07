@@ -2,12 +2,14 @@ import { getCurrentWorkspaceContext } from '@/src/server/workspaces/getCurrentWo
 import Link from 'next/link';
 import { connection } from 'next/server';
 import { Suspense } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { connectStubAccount, disconnectAccount } from './actions';
 import { VisibilitySelect } from './visibility-select';
 
 export default function ConnectionsPage() {
   return (
-    <Suspense fallback={<p className="text-slate-500">Loading…</p>}>
+    <Suspense fallback={<p className="text-ink-muted">Loading…</p>}>
       <ConnectionsList />
     </Suspense>
   );
@@ -19,14 +21,14 @@ async function ConnectionsList() {
 
   if (!context) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <Card>
         <Link
           href="/sign-in?next=/settings/connections"
-          className="font-medium text-indigo-600 hover:text-indigo-500"
+          className="font-medium text-accent-strong hover:text-accent"
         >
           Sign in
         </Link>
-      </div>
+      </Card>
     );
   }
 
@@ -44,15 +46,15 @@ async function ConnectionsList() {
   }
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-      <h1 className="mb-4 text-2xl font-semibold text-slate-900">Connections</h1>
-      <ul className="mb-6 flex flex-col gap-3">
+    <Card>
+      <h1 className="mb-4 text-2xl font-semibold text-ink">Connections</h1>
+      <ul className="mb-6 flex flex-col divide-y divide-line-muted">
         {(accounts ?? []).map((account) => (
           <li
             key={account.id}
-            className="flex items-center justify-between gap-4 rounded-md border border-slate-200 p-3"
+            className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
           >
-            <span className="font-medium capitalize text-slate-800">{account.provider}</span>
+            <span className="font-medium text-ink capitalize">{account.provider}</span>
             <div className="flex items-center gap-3">
               <VisibilitySelect
                 accountId={account.id}
@@ -63,18 +65,13 @@ async function ConnectionsList() {
           </li>
         ))}
         {(accounts ?? []).length === 0 && (
-          <li className="text-sm text-slate-500">No connected accounts yet.</li>
+          <li className="text-sm text-ink-muted">No connected accounts yet.</li>
         )}
       </ul>
       <form action={connect}>
-        <button
-          type="submit"
-          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
-        >
-          Connect test account (stub)
-        </button>
+        <Button type="submit">Connect test account (stub)</Button>
       </form>
-    </div>
+    </Card>
   );
 }
 
@@ -86,12 +83,9 @@ function DisconnectButton({ accountId }: { accountId: string }) {
 
   return (
     <form action={onSubmit}>
-      <button
-        type="submit"
-        className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50"
-      >
+      <Button variant="danger" size="sm" type="submit">
         Disconnect
-      </button>
+      </Button>
     </form>
   );
 }
