@@ -2,6 +2,9 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests/e2e',
+  // Targets the real staging Supabase project and needs .env.staging --
+  // run separately via `npm run test:e2e:staging`, not the default suite.
+  testIgnore: ['**/smoke-staging.spec.ts'],
   fullyParallel: true,
   retries: 0,
   reporter: process.env.CI ? [['html', { open: 'never' }]] : 'list',
