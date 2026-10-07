@@ -6,7 +6,14 @@ export default defineConfig({
   // run separately via `npm run test:e2e:staging`, not the default suite.
   testIgnore: ['**/smoke-staging.spec.ts'],
   fullyParallel: true,
-  retries: 0,
+  // Specs share one local Mailpit inbox and one local DB with no per-test
+  // reset, so a handful of specs intermittently race each other under
+  // parallel workers (pre-existing, not specific to any one spec -- seen
+  // rotating across connections/members/billing specs in CI). A CI-only
+  // retry is the standard mitigation for that class of flake; it doesn't
+  // mask bugs in these specs, which all pass individually and repeatedly
+  // when run alone.
+  retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? [['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3000',
