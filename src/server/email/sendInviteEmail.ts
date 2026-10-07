@@ -5,7 +5,16 @@ export async function sendInviteEmail(params: {
   workspaceName: string;
   inviteUrl: string;
 }): Promise<void> {
-  const resend = new Resend(process.env.RESEND_API_KEY);
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    // No Resend account configured yet (every local/CI environment today) --
+    // the invite row is already created either way, so log the link instead
+    // of hard-failing the whole invite flow over a missing optional provider.
+    console.info(`[sendInviteEmail] RESEND_API_KEY not set; invite link: ${params.inviteUrl}`);
+    return;
+  }
+
+  const resend = new Resend(apiKey);
   // Defaults to Resend's own sandbox sender, which works without a verified
   // domain (sending only to the account's own registered address). Set
   // RESEND_FROM_EMAIL once a real domain is verified.

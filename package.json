@@ -12,7 +12,7 @@
     "format:fix": "prettier --write .",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
-    "test:e2e": "playwright test",
+    "test:e2e": "node --env-file=.env.local node_modules/.bin/playwright test",
     "test:e2e:staging": "node --env-file=.env.staging node_modules/.bin/playwright test --config=playwright.staging.config.ts",
     "prepare": "husky"
   },
