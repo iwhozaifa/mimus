@@ -21,10 +21,13 @@ select is(
   1,
   'a user can see their own membership row'
 );
+-- Peer visibility was added in 0011_workspace_members_profiles_visibility.sql
+-- (workspace_visibility.sql covers that policy in depth) -- a workspace peer
+-- is now visible too, on top of the self-select floor this file tests.
 select is(
   (select count(*)::int from workspace_members where user_id = 'aa000000-0000-0000-0000-000000000002'),
-  0,
-  'a user cannot see another member''s membership row'
+  1,
+  'a workspace peer''s membership row is also visible (0011 peer-visibility policy)'
 );
 
 reset role;
