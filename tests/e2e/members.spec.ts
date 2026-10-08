@@ -43,6 +43,10 @@ test('owner invites, promotes, and removes a teammate through real RLS', async (
 
   await row.getByRole('combobox').selectOption('manager');
   await expect(row.getByRole('combobox')).toHaveValue('manager');
+  // RoleSelect's onChange awaits the server action and only re-enables the
+  // select once it resolves -- wait for that before reloading, otherwise
+  // the reload can race the still-in-flight write and read back the old role.
+  await expect(row.getByRole('combobox')).not.toBeDisabled();
 
   // Reload to prove the role change was persisted through the real
   // RLS-respecting write path (migration 0011's UPDATE policy), not just
