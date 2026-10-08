@@ -3,7 +3,7 @@ import { MICROSOFT_OAUTH_NONCE_COOKIE } from '@/src/server/connectors/cookies';
 import { getCurrentWorkspaceContext } from '@/src/server/workspaces/getCurrentWorkspaceContext';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import type { NextRequest } from 'next/server';
+import { after, type NextRequest } from 'next/server';
 
 // Kept thin and untested by vitest -- see google/callback/route.ts's comment.
 export async function GET(request: NextRequest) {
@@ -40,8 +40,9 @@ export async function GET(request: NextRequest) {
     redirect('/settings/connections?error=microsoft_invalid_state');
   }
 
+  let rows;
   try {
-    await getConnector('microsoft').handleOAuthCallback({
+    rows = await getConnector('microsoft').handleOAuthCallback({
       workspaceId: decoded.workspaceId,
       userId: decoded.userId,
       code,
@@ -50,6 +51,16 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.error('Microsoft OAuth callback failed', err);
     redirect('/settings/connections?error=microsoft_connect_failed');
+  }
+
+  // Runs after the redirect response is sent -- see google/callback/route.ts's
+  // comment.
+  for (const row of rows) {
+    after(() =>
+      getConnector('microsoft')
+        .backfill(row.id)
+        .catch((err) => console.error(`Microsoft backfill failed for account ${row.id}`, err)),
+    );
   }
 
   redirect('/settings/connections');
