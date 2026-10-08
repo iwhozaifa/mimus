@@ -73,6 +73,14 @@ Same two-sibling-rows shape as Google (one OAuth grant -> an `email` row and a `
 
 Disconnecting a Microsoft account doesn't call a revoke endpoint the way Google's does -- Microsoft Graph has no per-app token revocation API. The closest thing, `POST /me/revokeSignInSessions`, invalidates the user's refresh tokens for _every_ app they've consented to, not just this one, so calling it would sign the user out of every other Microsoft app too. Disconnecting instead just deletes Mimus's own cached credentials and purges that account's content; the user's underlying Microsoft session is untouched until it naturally expires or they revoke it themselves.
 
+### Push notifications and renewal (code-complete, not live yet)
+
+Both connectors have a push-notification path so new mail/events sync in near-real-time instead of waiting for the next poll, but neither can actually be registered against a real Gmail/Outlook account until a deployed HTTPS URL exists (see "Outstanding setup" below) -- until then, this is tested code with nothing driving it.
+
+- **Google** (`src/server/connectors/google/webhook.ts`): `registerGmailWatch()` calls Gmail's `watch()` against a Cloud Pub/Sub topic (`GOOGLE_PUBSUB_TOPIC`), storing the returned `historyId` as the sync cursor. `POST /api/webhooks/google/pubsub` receives Pub/Sub's push envelope, verifies its OIDC bearer token (audience = `GOOGLE_PUBSUB_AUDIENCE`, optionally also checking `GOOGLE_PUBSUB_SERVICE_ACCOUNT_EMAIL`) against Google's public certs, then walks `history.list` forward from the stored cursor to pick up only what actually changed.
+- **Microsoft** (`src/server/connectors/microsoft/webhook.ts`): `registerGraphSubscription()` creates a Graph change-notification subscription (`/me/messages` or `/me/events`) pointed at `MICROSOFT_GRAPH_NOTIFICATION_URL`, with `MICROSOFT_GRAPH_CLIENT_STATE` as the shared secret Graph echoes back on every notification -- Graph has no cryptographic request signature, so matching that echoed value is the entire authentication check. `POST /api/webhooks/microsoft/graph` answers Graph's validation handshake (`?validationToken=...`) and, for real notifications, re-syncs the matching account via a delta query (`/me/mailFolders('inbox')/messages/delta` or `/me/calendarView/delta`), storing the returned `@odata.deltaLink` as the next sync cursor.
+- **Renewal** (`app/api/cron/renew-watches`): Gmail watches expire in <=7 days and Graph subscriptions in <=3 days (tracked per-row in `connected_accounts.watch_expires_at`, added by migration 0013). This route re-registers anything due, guarded by a `CRON_SECRET` bearer check. Nothing calls it on a schedule yet -- wiring that up (Vercel Cron via `vercel.json`, or Supabase `pg_cron`+`pg_net` calling the deployed URL) is itself blocked on the same missing deployed URL.
+
 ## Running
 
 ```bash
@@ -100,8 +108,8 @@ Code-complete work the repo owner still needs to act on — nothing here blocks 
 1. **Merge the open Milestone 2 PRs, in order** — each branch is based on the previous one's tip, so merging out of order will conflict: `#30 → #31 → #32 → #33 → #34 → #35 → #36`.
 2. **Google Cloud OAuth client**, for live testing of the Google connector — [console.cloud.google.com](https://console.cloud.google.com) → APIs & Services → Credentials → OAuth client ID ("Web application"). Provide `GOOGLE_OAUTH_CLIENT_ID`/`GOOGLE_OAUTH_CLIENT_SECRET` and register redirect URI `http://localhost:3000/api/connectors/google/callback` (or your deployed equivalent).
 3. **Microsoft Entra app registration**, for live testing of the Microsoft connector — [entra.microsoft.com](https://entra.microsoft.com) → App registrations → New registration → multi-tenant ("Accounts in any organizational directory and personal Microsoft accounts"). Provide `MICROSOFT_OAUTH_CLIENT_ID`/`MICROSOFT_OAUTH_CLIENT_SECRET` and register redirect URI `http://localhost:3000/api/connectors/microsoft/callback`.
-4. **Google Cloud Pub/Sub topic**, only needed for live Gmail webhook push notifications (not for OAuth or backfill) — a topic plus a publish IAM binding for `gmail-api-push@system.gserviceaccount.com`.
-5. **A deployed public HTTPS URL** (e.g. Vercel) — required before either provider's webhook subscription can be registered at all (Gmail `watch()`, Graph `/subscriptions`). Blocks the remaining webhook/renewal work for both connectors until it exists.
+4. **Google Cloud Pub/Sub topic**, for live Gmail push notifications (not needed for OAuth or backfill) — a topic plus a publish IAM binding for `gmail-api-push@system.gserviceaccount.com`. Set `GOOGLE_PUBSUB_TOPIC`.
+5. **A deployed public HTTPS URL** (e.g. Vercel) — required before either provider's webhook subscription can be registered at all (Gmail `watch()`, Graph `/subscriptions`), and before the renewal cron (`app/api/cron/renew-watches`) can actually be scheduled against anything. The webhook/renewal code itself is done (see "Push notifications and renewal" above) — this is the one thing blocking it from running for real. Once it exists: set `GOOGLE_PUBSUB_AUDIENCE`, `MICROSOFT_GRAPH_NOTIFICATION_URL`, `MICROSOFT_GRAPH_CLIENT_STATE`, and `CRON_SECRET`, then add a scheduler (Vercel Cron via `vercel.json`, or Supabase `pg_cron`+`pg_net`) that `POST`s `/api/cron/renew-watches` with `Authorization: Bearer $CRON_SECRET` on a recurring basis (daily is enough margin for both providers' renewal windows).
 
 ## Pages
 
@@ -109,7 +117,7 @@ Sign in to reach the app shell at these routes:
 
 | Route                   | What it's for                                                                              |
 | ----------------------- | ------------------------------------------------------------------------------------------ |
-| `/dashboard`            | Workspace name, your role, read-only banner when billing is past due                       |
+| `/sky`                  | Morning-brief landing page -- greeting, KPI tiles, "needs you" items, department rows      |
 | `/members`              | Invite teammates, change roles, remove members                                             |
 | `/settings/connections` | Connect a Google or Microsoft account and set each row's visibility (private/team/company) |
 | `/billing`              | Plans and current subscription, Stripe Checkout button                                     |
