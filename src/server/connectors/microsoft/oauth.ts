@@ -164,16 +164,16 @@ export async function refreshAndStoreTokens(connectedAccountId: string): Promise
     secret.key_version,
   );
 
-  let latestCache = storedCache;
+  // Only beforeCacheAccess is needed here -- unlike client.ts (which
+  // avoids a DB write on every single Graph call by only persisting when
+  // afterCacheAccess reports a change), this is already a one-shot forced
+  // refresh, so just re-serializing the cache once afterwards is simpler
+  // and exactly as efficient.
   const cachePlugin: ICachePlugin = {
     async beforeCacheAccess(context) {
-      context.cache.deserialize(latestCache);
+      context.cache.deserialize(storedCache);
     },
-    async afterCacheAccess(context) {
-      if (context.cacheHasChanged) {
-        latestCache = context.cache.serialize();
-      }
-    },
+    async afterCacheAccess() {},
   };
 
   const client = requireOAuthClient(cachePlugin);
@@ -183,5 +183,5 @@ export async function refreshAndStoreTokens(connectedAccountId: string): Promise
   }
 
   await client.acquireTokenSilent({ account, scopes: SCOPES, forceRefresh: true });
-  await persistSerializedCache(connectedAccountId, latestCache);
+  await persistSerializedCache(connectedAccountId, client.getTokenCache().serialize());
 }
