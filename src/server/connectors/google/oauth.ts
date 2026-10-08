@@ -29,7 +29,11 @@ function createOAuthClient() {
   return new google.auth.OAuth2({ clientId, clientSecret, redirectUri });
 }
 
-function requireOAuthClient() {
+// Exported so other Google-connector modules (client.ts, building an
+// authenticated API client from a connected account's stored tokens) can
+// get a correctly-configured OAuth2Client without duplicating the
+// clientId/clientSecret/redirectUri env lookup.
+export function requireOAuthClient() {
   const client = createOAuthClient();
   if (!client) {
     throw new Error(
