@@ -80,7 +80,7 @@ Disconnecting a Microsoft account doesn't call a revoke endpoint the way Google'
 
 Connecting Slack grants one `connected_accounts` row per member (account_type `slack`), requesting only `channels:history`/`channels:read`/`groups:history`/`groups:read` on the member's own **user** token -- no `im:*`/`mpim:*` scope is ever requested, so Slack never grants this token visibility into DMs or group-DMs at all, and no bot-posting scope is requested either (Mimus never posts to Slack). Unlike Google/Microsoft, Slack's OAuth v2 user grant issues no refresh token and the access token doesn't expire by default, so there's nothing for `refreshToken()` to do (a documented no-op, see `src/server/connectors/slack/oauth.ts`).
 
-Connecting only stores the token today -- backfilling channel history and ingesting real-time messages via Slack's Events API are the next two Milestone 3 tasks, not yet built.
+Connecting backfills 90 days of history from every `public_channel`/`private_channel` the member is actually a member of (`users.conversations`, not `conversations.list` -- the latter would also surface public channels the member never joined). Real-time ingestion via Slack's Events API is the next Milestone 3 task, not yet built -- until it ships, a member's messages table only reflects what backfill saw at connect time.
 
 ### Push notifications and renewal (code-complete, not live yet)
 
