@@ -40,17 +40,28 @@ cp .env.example .env.local
 
 Copy `.env.example` to `.env.local` and fill these in — all are server-only except the two `NEXT_PUBLIC_*` ones:
 
-| Variable                               | Required for                                  | Where to get it                                                                                                                         |
-| -------------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_SUPABASE_URL`             | Everything                                    | `npx supabase status` (local) or your Supabase project's API settings (hosted)                                                          |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Everything                                    | Same as above                                                                                                                           |
-| `SUPABASE_SECRET_KEY`                  | Server-side admin writes (service role)       | Same as above — never expose this one to the browser                                                                                    |
-| `RESEND_API_KEY`                       | Teammate-invite emails only (**not** sign-in) | [resend.com](https://resend.com) — a free account works; sandbox mode only delivers to your own account email until you verify a domain |
-| `RESEND_FROM_EMAIL`                    | Optional, pairs with `RESEND_API_KEY`         | A verified sender on your Resend domain; omit to use Resend's sandbox sender                                                            |
-| `STRIPE_SECRET_KEY`                    | `/billing` checkout                           | [dashboard.stripe.com](https://dashboard.stripe.com) test-mode API keys                                                                 |
-| `STRIPE_WEBHOOK_SECRET`                | Stripe webhook verification                   | Stripe CLI (`stripe listen`) locally, or the webhook's signing secret in the Stripe dashboard once deployed                             |
+| Variable                               | Required for                                  | Where to get it                                                                                                                            |
+| -------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `NEXT_PUBLIC_SUPABASE_URL`             | Everything                                    | `npx supabase status` (local) or your Supabase project's API settings (hosted)                                                             |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Everything                                    | Same as above                                                                                                                              |
+| `SUPABASE_SECRET_KEY`                  | Server-side admin writes (service role)       | Same as above — never expose this one to the browser                                                                                       |
+| `RESEND_API_KEY`                       | Teammate-invite emails only (**not** sign-in) | [resend.com](https://resend.com) — a free account works; sandbox mode only delivers to your own account email until you verify a domain    |
+| `RESEND_FROM_EMAIL`                    | Optional, pairs with `RESEND_API_KEY`         | A verified sender on your Resend domain; omit to use Resend's sandbox sender                                                               |
+| `STRIPE_SECRET_KEY`                    | `/billing` checkout                           | [dashboard.stripe.com](https://dashboard.stripe.com) test-mode API keys                                                                    |
+| `STRIPE_WEBHOOK_SECRET`                | Stripe webhook verification                   | Stripe CLI (`stripe listen`) locally, or the webhook's signing secret in the Stripe dashboard once deployed                                |
+| `GOOGLE_OAUTH_CLIENT_ID`               | Connecting a Google account (Gmail+Calendar)  | [console.cloud.google.com](https://console.cloud.google.com) -> APIs & Services -> Credentials -> OAuth client ID (type "Web application") |
+| `GOOGLE_OAUTH_CLIENT_SECRET`           | Same as above                                 | Same as above                                                                                                                              |
+| `GOOGLE_OAUTH_REDIRECT_URI`            | Same as above                                 | Must exactly match an authorized redirect URI on the OAuth client, e.g. `http://localhost:3000/api/connectors/google/callback`             |
+| `TOKEN_ENCRYPTION_KEY`                 | Encrypting connector OAuth tokens at rest     | Generate your own: `openssl rand -base64 32` -- not a third-party credential                                                               |
+| `TOKEN_ENCRYPTION_KEY_VERSION`         | Optional, defaults to `1`                     | Only set when rotating to a new `TOKEN_ENCRYPTION_KEY_V{n}` (see below)                                                                    |
 
-If you leave `RESEND_API_KEY` blank, invites still work — the invite link is logged to the server console instead of emailed. If you leave the Stripe vars blank, `/billing` renders fine but the Subscribe button errors when clicked; you also need at least one `plans` row with a real `stripe_price_id` (`supabase/migrations/0007_plans_feature_switches.sql`) for a plan to be checkout-able at all — the table ships empty.
+If you leave `RESEND_API_KEY` blank, invites still work — the invite link is logged to the server console instead of emailed. If you leave the Stripe vars blank, `/billing` renders fine but the Subscribe button errors when clicked; you also need at least one `plans` row with a real `stripe_price_id` (`supabase/migrations/0007_plans_feature_switches.sql`) for a plan to be checkout-able at all — the table ships empty. If you leave the Google OAuth vars blank, the "Connect Google" flow redirects back with an error instead of throwing at import/build time -- everything else works without it.
+
+### Google connector
+
+Connecting a Google account creates **two** `connected_accounts` rows from one OAuth grant (`account_type` `email` and `calendar`), each independently visible (Private/Team/Company) and each backfilling 90 days of Gmail messages or Calendar events respectively. Tokens are encrypted at rest (AES-256-GCM, `TOKEN_ENCRYPTION_KEY`) in `connected_account_secrets`, a table with no RLS policies at all -- only server-side service-role code ever reads them.
+
+To rotate `TOKEN_ENCRYPTION_KEY`: generate a new key, set it as `TOKEN_ENCRYPTION_KEY_V2` (keep the old `TOKEN_ENCRYPTION_KEY` around -- existing rows still need it to decrypt, tracked per-row via `key_version`), set `TOKEN_ENCRYPTION_KEY_VERSION=2` so new encryptions use it, and deploy both the app (Vercel env) and Supabase Edge Functions (`supabase secrets set`) -- separate stores, both need every active key version.
 
 ## Running
 
@@ -80,7 +91,7 @@ Sign in to reach the app shell at these routes:
 | ----------------------- | ----------------------------------------------------------------------------------- |
 | `/dashboard`            | Workspace name, your role, read-only banner when billing is past due                |
 | `/members`              | Invite teammates, change roles, remove members                                      |
-| `/settings/connections` | Connect a (stub) account and set its visibility (private/team/company)              |
+| `/settings/connections` | Connect a Google account and set each row's visibility (private/team/company)       |
 | `/billing`              | Plans and current subscription, Stripe Checkout button                              |
 | `/feature-switches`     | Owner-only toggles for the four product areas (money/pipeline/projects/canopy)      |
 | `/audit-log`            | Placeholder — becomes the AI agent activity log once the agent ships (Milestone 4+) |
