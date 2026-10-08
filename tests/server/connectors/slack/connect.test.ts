@@ -67,6 +67,7 @@ describe('completeSlackConnection', () => {
     expect(row.external_account_id).toBe('U123');
     expect(row.visibility).toBe('private');
     expect(row.status).toBe('connected');
+    expect(row.provider_team_id).toBe('T123');
 
     const { data: secret } = await supabase
       .from('connected_account_secrets')

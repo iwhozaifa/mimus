@@ -14,6 +14,12 @@ export interface ConnectedAccountRow {
   account_type: AccountType;
   visibility: 'private' | 'team' | 'company';
   external_account_id: string | null;
+  // Which provider-side workspace/tenant this account belongs to, distinct
+  // from external_account_id (which identifies the person, not the
+  // workspace) -- currently only populated by Slack, to find every member
+  // connected to the same Slack workspace an Events API notification came
+  // from. See supabase/migrations/0015_connected_accounts_provider_team_id.sql.
+  provider_team_id: string | null;
   status: ConnectedAccountStatus;
 }
 

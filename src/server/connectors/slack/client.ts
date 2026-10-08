@@ -25,3 +25,18 @@ export async function getAuthorizedClient(connectedAccountId: string): Promise<W
   );
   return new WebClient(accessToken);
 }
+
+// The one Slack app installation's own bot token -- a single static
+// credential (api.slack.com/apps -> OAuth & Permissions -> Bot User OAuth
+// Token), not per-member like getAuthorizedClient() above. Used only to
+// resolve channel membership for Events API fan-out (see events.ts):
+// Slack's Events API delivers one notification per Slack workspace, and
+// this is how ingestion maps that back to which of our own connected
+// members can actually see the channel it came from.
+export function getBotClient(): WebClient {
+  const token = process.env.SLACK_BOT_TOKEN;
+  if (!token) {
+    throw new Error('SLACK_BOT_TOKEN is not configured');
+  }
+  return new WebClient(token);
+}
