@@ -1,3 +1,10 @@
+import { createServiceClient } from '@/src/db/service';
+import {
+  bufferToPgBytea,
+  decryptToken,
+  encryptToken,
+  pgByteaToBuffer,
+} from '@/src/server/crypto/tokenVault';
 import { google } from 'googleapis';
 
 // Read-only scopes only -- V1 never sends on the user's behalf. Covers
@@ -74,6 +81,69 @@ export async function refreshAccessToken(refreshToken: string): Promise<Exchange
     expiryDate: credentials.expiry_date ?? null,
     scope: credentials.scope ?? null,
   };
+}
+
+// On-demand refresh (e.g. after a provider API 401) -- fans the new token
+// pair out to every sibling connected_accounts row sharing
+// (workspace_id, provider, external_account_id), since one Google OAuth
+// grant produces two rows (email + calendar) whose tokens must never
+// drift apart.
+export async function refreshAndStoreTokens(connectedAccountId: string): Promise<void> {
+  const supabase = createServiceClient();
+
+  const { data: account, error: accountError } = await supabase
+    .from('connected_accounts')
+    .select('workspace_id, provider, external_account_id')
+    .eq('id', connectedAccountId)
+    .single();
+  if (accountError) throw accountError;
+
+  const { data: secret, error: secretError } = await supabase
+    .from('connected_account_secrets')
+    .select('encrypted_refresh_token, key_version')
+    .eq('connected_account_id', connectedAccountId)
+    .single();
+  if (secretError) throw secretError;
+  if (!secret.encrypted_refresh_token || secret.key_version == null) {
+    throw new Error(`No stored refresh token for connected account ${connectedAccountId}`);
+  }
+
+  const currentRefreshToken = await decryptToken(
+    pgByteaToBuffer(secret.encrypted_refresh_token as string),
+    secret.key_version,
+  );
+
+  const refreshed = await refreshAccessToken(currentRefreshToken);
+
+  const { ciphertext: encryptedAccessToken, keyVersion } = await encryptToken(
+    refreshed.accessToken,
+  );
+  // refreshAccessToken() above always falls back to the given refresh
+  // token when Google omits a new one, so this is never actually null.
+  const { ciphertext: encryptedRefreshToken } = await encryptToken(refreshed.refreshToken!);
+
+  const { data: siblings, error: siblingsError } = await supabase
+    .from('connected_accounts')
+    .select('id')
+    .eq('workspace_id', account.workspace_id)
+    .eq('provider', account.provider)
+    .eq('external_account_id', account.external_account_id);
+  if (siblingsError) throw siblingsError;
+
+  await Promise.all(
+    (siblings ?? []).map((sibling) =>
+      supabase
+        .from('connected_account_secrets')
+        .update({
+          encrypted_access_token: bufferToPgBytea(encryptedAccessToken),
+          encrypted_refresh_token: bufferToPgBytea(encryptedRefreshToken),
+          key_version: keyVersion,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('connected_account_id', sibling.id)
+        .throwOnError(),
+    ),
+  );
 }
 
 export async function revokeToken(token: string): Promise<void> {

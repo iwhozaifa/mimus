@@ -1,14 +1,14 @@
 import { backfillGoogleAccount } from '@/src/server/connectors/google/backfill';
 import { completeGoogleConnection } from '@/src/server/connectors/google/connect';
-import { getAuthUrl } from '@/src/server/connectors/google/oauth';
+import { disconnectGoogleAccount } from '@/src/server/connectors/google/disconnect';
+import { getAuthUrl, refreshAndStoreTokens } from '@/src/server/connectors/google/oauth';
 import { registerConnector } from '@/src/server/connectors/registry';
 import type { Connector } from '@/src/server/connectors/types';
 
 // Methods not yet backed by a real implementation -- each is replaced in
-// its own later Milestone 2 task (handleWebhook: 2.13, refreshToken:
-// 2.15, disconnect: 2.16; poll has no dedicated task since Google has a
-// push mechanism, but the interface requires it as a fallback for
-// accounts that can't register a watch).
+// its own later Milestone 2 task (handleWebhook: 2.13; poll has no
+// dedicated task since Google has a push mechanism, but the interface
+// requires it as a fallback for accounts that can't register a watch).
 function notImplemented(method: string): never {
   throw new Error(`google connector: ${method}() is not implemented yet`);
 }
@@ -33,11 +33,11 @@ export const googleConnector: Connector = {
   async poll() {
     notImplemented('poll');
   },
-  async refreshToken() {
-    notImplemented('refreshToken');
+  async refreshToken(connectedAccountId) {
+    await refreshAndStoreTokens(connectedAccountId);
   },
-  async disconnect() {
-    notImplemented('disconnect');
+  async disconnect(connectedAccountId) {
+    await disconnectGoogleAccount(connectedAccountId);
   },
 };
 
