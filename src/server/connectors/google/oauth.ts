@@ -75,3 +75,17 @@ export async function refreshAccessToken(refreshToken: string): Promise<Exchange
 export async function revokeToken(token: string): Promise<void> {
   await requireOAuthClient().revokeToken(token);
 }
+
+// No 'email'/'profile'/'openid' scope is requested (see SCOPES above), so
+// identifying which Google account just connected goes through the Gmail
+// profile endpoint instead, which gmail.readonly already grants.
+export async function getAuthenticatedEmail(accessToken: string): Promise<string> {
+  const client = requireOAuthClient();
+  client.setCredentials({ access_token: accessToken });
+  const gmail = google.gmail({ version: 'v1', auth: client });
+  const { data } = await gmail.users.getProfile({ userId: 'me' });
+  if (!data.emailAddress) {
+    throw new Error('Google did not return an email address for this account');
+  }
+  return data.emailAddress;
+}

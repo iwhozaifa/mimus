@@ -1,5 +1,6 @@
 import {
   exchangeCode,
+  getAuthenticatedEmail,
   getAuthUrl,
   refreshAccessToken,
   revokeToken,
@@ -74,5 +75,30 @@ describe('google oauth', () => {
       .mockResolvedValue({} as any);
     await revokeToken('access-123');
     expect(spy).toHaveBeenCalledWith('access-123');
+  });
+
+  it('resolves the authenticated account email via the Gmail profile endpoint', async () => {
+    const gmailUsersPrototype = Object.getPrototypeOf(
+      google.gmail({ version: 'v1', auth: new google.auth.OAuth2() }).users,
+    );
+    vi.spyOn(gmailUsersPrototype, 'getProfile').mockResolvedValue({
+      data: { emailAddress: 'someone@example.com' },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    const email = await getAuthenticatedEmail('access-123');
+    expect(email).toBe('someone@example.com');
+  });
+
+  it('throws if Google returns a profile with no email address', async () => {
+    const gmailUsersPrototype = Object.getPrototypeOf(
+      google.gmail({ version: 'v1', auth: new google.auth.OAuth2() }).users,
+    );
+    vi.spyOn(gmailUsersPrototype, 'getProfile').mockResolvedValue({
+      data: {},
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    await expect(getAuthenticatedEmail('access-123')).rejects.toThrow(/did not return an email/);
   });
 });
