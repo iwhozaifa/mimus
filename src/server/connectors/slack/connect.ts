@@ -9,9 +9,10 @@ import { bufferToPgBytea, encryptToken } from '@/src/server/crypto/tokenVault';
 // access token is stored; Slack's default OAuth v2 grant issues no
 // refresh token at all (see oauth.ts's refreshToken for why).
 //
-// The grant's team id (which Slack workspace this is) isn't persisted yet
-// -- nothing in this task needs it. It becomes load-bearing in the Events
-// API ingestion task, which will add wherever it ends up living then.
+// provider_team_id (which Slack workspace this is) is what the Events API
+// ingestion path uses to find every Mimus member connected to the same
+// Slack workspace a given notification came from -- see
+// supabase/migrations/0015_connected_accounts_provider_team_id.sql.
 export async function completeSlackConnection(params: {
   workspaceId: string;
   userId: string;
@@ -31,6 +32,7 @@ export async function completeSlackConnection(params: {
       account_type: 'slack',
       visibility: 'private',
       external_account_id: tokens.slackUserId,
+      provider_team_id: tokens.teamId,
       scopes: tokens.scope ? tokens.scope.split(',') : null,
     })
     .select('*')

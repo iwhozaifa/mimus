@@ -3,14 +3,9 @@ import { SLACK_OAUTH_NONCE_COOKIE } from '@/src/server/connectors/cookies';
 import { getCurrentWorkspaceContext } from '@/src/server/workspaces/getCurrentWorkspaceContext';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import type { NextRequest } from 'next/server';
+import { after, type NextRequest } from 'next/server';
 
 // Kept thin and untested by vitest -- see the start route's comment.
-//
-// Unlike Google/Microsoft's callback, this doesn't kick off a backfill
-// yet -- that lands in the next M3 task (Slack backfill + message
-// normalization). Connecting today only stores the token; nothing reads
-// Slack content until that task ships.
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const oauthError = searchParams.get('error');
@@ -45,8 +40,9 @@ export async function GET(request: NextRequest) {
     redirect('/settings/connections?error=slack_invalid_state');
   }
 
+  let rows;
   try {
-    await getConnector('slack').handleOAuthCallback({
+    rows = await getConnector('slack').handleOAuthCallback({
       workspaceId: decoded.workspaceId,
       userId: decoded.userId,
       code,
@@ -55,6 +51,17 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.error('Slack OAuth callback failed', err);
     redirect('/settings/connections?error=slack_connect_failed');
+  }
+
+  // Runs after the redirect response is sent -- a 90-day backfill across
+  // every channel the member is in is too slow to block the OAuth
+  // round-trip on.
+  for (const row of rows) {
+    after(() =>
+      getConnector('slack')
+        .backfill(row.id)
+        .catch((err) => console.error(`Slack backfill failed for account ${row.id}`, err)),
+    );
   }
 
   redirect('/settings/connections');

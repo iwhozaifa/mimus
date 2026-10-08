@@ -82,6 +82,12 @@ async function ConnectionsList() {
         >
           Connect Slack
         </Link>
+        <Link
+          href="/api/connectors/calendly/start"
+          className="inline-flex rounded-md bg-ink px-4 py-2 text-sm font-medium text-ink-foreground transition-colors hover:bg-ink/90"
+        >
+          Connect Calendly
+        </Link>
       </div>
     </Card>
   );
