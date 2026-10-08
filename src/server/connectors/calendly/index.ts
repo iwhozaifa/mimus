@@ -3,7 +3,10 @@ import { disconnectCalendlyAccount } from '@/src/server/connectors/calendly/disc
 import { getAuthUrl, refreshAndStoreTokens } from '@/src/server/connectors/calendly/oauth';
 import { pollCalendlyAccount } from '@/src/server/connectors/calendly/poll';
 import { syncCalendlyAccount } from '@/src/server/connectors/calendly/sync';
-import { handleCalendlyWebhook } from '@/src/server/connectors/calendly/webhook';
+import {
+  handleCalendlyWebhook,
+  registerCalendlyWebhook,
+} from '@/src/server/connectors/calendly/webhook';
 import { registerConnector } from '@/src/server/connectors/registry';
 import type { Connector } from '@/src/server/connectors/types';
 
@@ -32,6 +35,9 @@ export const calendlyConnector: Connector = {
   },
   async disconnect(connectedAccountId) {
     await disconnectCalendlyAccount(connectedAccountId);
+  },
+  async registerWebhook(connectedAccountId) {
+    await registerCalendlyWebhook(connectedAccountId);
   },
 };
 

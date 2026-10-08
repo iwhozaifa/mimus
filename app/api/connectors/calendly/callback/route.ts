@@ -56,12 +56,30 @@ export async function GET(request: NextRequest) {
   // Runs after the redirect response is sent -- same rationale as
   // Google/Microsoft/Slack's callback: backfilling every scheduled event
   // in the sync window is too slow to block the OAuth round-trip on.
+  //
+  // Also registers this account's webhook subscription here, once, at
+  // connect time -- unlike Google/Microsoft's watch()/subscription (which
+  // ride the renewal cron's "due" query even for a brand-new account) or
+  // Slack's single static app-wide subscription, Calendly needs its own
+  // per-account registration call and that subscription doesn't expire,
+  // so there's nothing for a renewal cron to do here. Expected to fail
+  // (logged, not fatal) until CALENDLY_WEBHOOK_URL is actually configured
+  // -- same "code-complete, not live yet" posture as every other
+  // provider's push-notification setup.
   for (const row of rows) {
     after(() =>
       getConnector('calendly')
         .backfill(row.id)
         .catch((err) => console.error(`Calendly backfill failed for account ${row.id}`, err)),
     );
+    const registerWebhook = getConnector('calendly').registerWebhook;
+    if (registerWebhook) {
+      after(() =>
+        registerWebhook(row.id).catch((err) =>
+          console.error(`Calendly webhook registration failed for account ${row.id}`, err),
+        ),
+      );
+    }
   }
 
   redirect('/settings/connections');
