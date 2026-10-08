@@ -3,6 +3,7 @@
 // self-registered. Lives at the connectors root, not inside a provider
 // subfolder, so app/** code (blocked from connectors/<provider>/** by the
 // eslint import-boundary rule) can import it freely.
+import '@/src/server/connectors/calendly';
 import '@/src/server/connectors/google';
 import '@/src/server/connectors/microsoft';
 import '@/src/server/connectors/slack';
