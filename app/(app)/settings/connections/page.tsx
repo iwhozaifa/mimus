@@ -63,12 +63,20 @@ async function ConnectionsList() {
           <li className="text-sm text-ink-muted">No connected accounts yet.</li>
         )}
       </ul>
-      <Link
-        href="/api/connectors/google/start"
-        className="inline-flex rounded-md bg-ink px-4 py-2 text-sm font-medium text-ink-foreground transition-colors hover:bg-ink/90"
-      >
-        Connect Google
-      </Link>
+      <div className="flex gap-3">
+        <Link
+          href="/api/connectors/google/start"
+          className="inline-flex rounded-md bg-ink px-4 py-2 text-sm font-medium text-ink-foreground transition-colors hover:bg-ink/90"
+        >
+          Connect Google
+        </Link>
+        <Link
+          href="/api/connectors/microsoft/start"
+          className="inline-flex rounded-md bg-ink px-4 py-2 text-sm font-medium text-ink-foreground transition-colors hover:bg-ink/90"
+        >
+          Connect Microsoft
+        </Link>
+      </div>
     </Card>
   );
 }

@@ -6,7 +6,7 @@ function fakeConnector(provider: Connector['provider']): Connector {
   return {
     provider,
     capabilities: ['email'],
-    getAuthUrl: () => 'https://example.com/auth',
+    getAuthUrl: async () => 'https://example.com/auth',
     handleOAuthCallback: async () => [],
     backfill: async () => {},
     handleWebhook: async () => new Response(null, { status: 200 }),

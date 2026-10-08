@@ -35,7 +35,7 @@ export async function GET() {
 
   let authUrl: string;
   try {
-    authUrl = getConnector('google').getAuthUrl(state);
+    authUrl = await getConnector('google').getAuthUrl(state);
   } catch (err) {
     if (err instanceof Error && err.message.includes('Google OAuth is not configured')) {
       redirect('/settings/connections?error=google_not_configured');
