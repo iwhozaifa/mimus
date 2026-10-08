@@ -12,21 +12,6 @@ async function requireContext() {
   return context;
 }
 
-export async function connectStubAccount() {
-  const { supabase, userId, workspaceId } = await requireContext();
-  await assertWorkspaceWritable(workspaceId);
-  const { error } = await supabase.from('connected_accounts').insert({
-    workspace_id: workspaceId,
-    owner_user_id: userId,
-    provider: 'google',
-    account_type: 'email',
-    visibility: 'private',
-    external_account_id: `stub-${crypto.randomUUID()}`,
-  });
-  if (error) throw error;
-  revalidatePath('/settings/connections');
-}
-
 export async function updateConnectionVisibility(
   connectedAccountId: string,
   visibility: 'private' | 'team' | 'company',

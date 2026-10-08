@@ -1,14 +1,14 @@
 import { expect, test } from '@playwright/test';
-import { signInViaMagicLink } from './helpers';
+import { seedConnectedAccount, signInViaMagicLink } from './helpers';
 
-test('connecting a stub account and changing its visibility persists through RLS', async ({
+test('changing a connected account visibility and disconnecting persists through RLS', async ({
   page,
 }) => {
   const email = `e2e-connections-${Date.now()}@example.com`;
   await signInViaMagicLink(page, email);
+  await seedConnectedAccount(email);
 
   await page.goto('/settings/connections');
-  await page.getByRole('button', { name: /connect test account/i }).click();
 
   const row = page.getByRole('listitem').filter({ hasText: 'google' });
   await expect(row).toBeVisible();
@@ -19,11 +19,27 @@ test('connecting a stub account and changing its visibility persists through RLS
 
   // Reload to prove the change was persisted through the real RLS-respecting
   // write path (this page uses the signed-in user's own session, not a
-  // service-role bypass), not just held in client-side state.
-  await page.reload();
-  const rowAfterReload = page.getByRole('listitem').filter({ hasText: 'google' });
-  await expect(rowAfterReload.getByRole('combobox')).toHaveValue('team');
+  // service-role bypass), not just held in client-side state. The select's
+  // onChange fires the update as an unawaited Server Action call, so retry
+  // the reload+check instead of assuming it has already landed.
+  let rowAfterReload = page.getByRole('listitem').filter({ hasText: 'google' });
+  await expect(async () => {
+    await page.reload();
+    rowAfterReload = page.getByRole('listitem').filter({ hasText: 'google' });
+    await expect(rowAfterReload.getByRole('combobox')).toHaveValue('team');
+  }).toPass({ timeout: 10_000 });
 
   await rowAfterReload.getByRole('button', { name: /disconnect/i }).click();
   await expect(page.getByRole('listitem').filter({ hasText: 'google' })).toHaveCount(0);
+});
+
+test('the Connect Google link points at the OAuth start route', async ({ page }) => {
+  const email = `e2e-connections-link-${Date.now()}@example.com`;
+  await signInViaMagicLink(page, email);
+
+  await page.goto('/settings/connections');
+  await expect(page.getByRole('link', { name: /connect google/i })).toHaveAttribute(
+    'href',
+    '/api/connectors/google/start',
+  );
 });

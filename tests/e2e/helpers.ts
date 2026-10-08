@@ -59,6 +59,44 @@ export async function latestInviteToken(email: string): Promise<string> {
   return data.token as string;
 }
 
+// Seeds a connected_accounts row directly via the service client, standing
+// in for a real Google OAuth round-trip -- no environment here (local or
+// CI) has a real Google Cloud project configured yet, so e2e coverage of
+// the connections page's visibility-toggle/disconnect flows seeds data
+// this way rather than driving the actual OAuth consent screen. Must run
+// after the user has signed in at least once, since the workspace doesn't
+// exist until auto-provisioning runs on their first magic-link verification.
+export async function seedConnectedAccount(email: string): Promise<string> {
+  const supabase = createServiceClient();
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('email', email)
+    .single();
+  if (profileError) throw profileError;
+
+  const { data: membership, error: membershipError } = await supabase
+    .from('workspace_members')
+    .select('workspace_id')
+    .eq('user_id', profile!.id)
+    .single();
+  if (membershipError) throw membershipError;
+
+  const { data: account, error: accountError } = await supabase
+    .from('connected_accounts')
+    .insert({
+      workspace_id: membership!.workspace_id,
+      owner_user_id: profile!.id,
+      provider: 'google',
+      account_type: 'email',
+    })
+    .select('id')
+    .single();
+  if (accountError) throw accountError;
+
+  return account!.id as string;
+}
+
 export async function signInViaMagicLink(page: Page, email: string): Promise<void> {
   await clearMailbox();
 
