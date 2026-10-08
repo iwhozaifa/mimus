@@ -31,7 +31,9 @@ export interface SendResult {
 export interface Connector {
   provider: Provider;
   capabilities: AccountType[];
-  getAuthUrl(state: string): string;
+  // Async because Microsoft's MSAL client has to look up the authority's
+  // endpoint metadata before it can build the URL -- Google's doesn't.
+  getAuthUrl(state: string): Promise<string>;
   handleOAuthCallback(params: OAuthCallbackParams): Promise<ConnectedAccountRow[]>;
   backfill(connectedAccountId: string): Promise<void>;
   handleWebhook(req: Request): Promise<Response>;

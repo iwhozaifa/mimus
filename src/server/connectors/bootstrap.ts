@@ -4,5 +4,6 @@
 // subfolder, so app/** code (blocked from connectors/<provider>/** by the
 // eslint import-boundary rule) can import it freely.
 import '@/src/server/connectors/google';
+import '@/src/server/connectors/microsoft';
 
 export { getConnector } from '@/src/server/connectors/registry';

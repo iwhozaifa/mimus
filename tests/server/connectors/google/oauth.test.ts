@@ -20,8 +20,8 @@ describe('google oauth', () => {
     vi.restoreAllMocks();
   });
 
-  it('builds an auth url with offline access, consent prompt, and the gmail+calendar scopes', () => {
-    const url = getAuthUrl('random-state-value');
+  it('builds an auth url with offline access, consent prompt, and the gmail+calendar scopes', async () => {
+    const url = await getAuthUrl('random-state-value');
     const parsed = new URL(url);
     expect(parsed.searchParams.get('access_type')).toBe('offline');
     expect(parsed.searchParams.get('prompt')).toBe('consent');
@@ -30,9 +30,9 @@ describe('google oauth', () => {
     expect(parsed.searchParams.get('scope')).toContain('calendar.readonly');
   });
 
-  it('throws a clear error (not a network call) when Google OAuth env vars are unset', () => {
+  it('throws a clear error (not a network call) when Google OAuth env vars are unset', async () => {
     vi.unstubAllEnvs();
-    expect(() => getAuthUrl('x')).toThrow(/Google OAuth is not configured/);
+    await expect(getAuthUrl('x')).rejects.toThrow(/Google OAuth is not configured/);
   });
 
   it('exchanges a code for tokens without hitting the real network', async () => {

@@ -17,6 +17,8 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@azure/msal-node": "^7.0.1",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.2",
     "googleapis": "^184.0.0",
@@ -30,6 +32,7 @@
   "devDependencies": {
     "@commitlint/cli": "^21.2.3",
     "@commitlint/config-conventional": "^21.2.3",
+    "@microsoft/microsoft-graph-types": "^2.43.1",
     "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^26.6.4",

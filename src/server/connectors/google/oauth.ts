@@ -50,7 +50,10 @@ export function requireOAuthClient() {
   return client;
 }
 
-export function getAuthUrl(state: string): string {
+// Returns a Promise only to satisfy the shared Connector interface
+// (Microsoft's MSAL client genuinely needs one) -- this one never actually
+// awaits anything.
+export async function getAuthUrl(state: string): Promise<string> {
   return requireOAuthClient().generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
