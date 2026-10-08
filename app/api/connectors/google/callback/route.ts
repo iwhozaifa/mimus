@@ -3,7 +3,7 @@ import { GOOGLE_OAUTH_NONCE_COOKIE } from '@/src/server/connectors/cookies';
 import { getCurrentWorkspaceContext } from '@/src/server/workspaces/getCurrentWorkspaceContext';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { type NextRequest } from 'next/server';
+import { after, type NextRequest } from 'next/server';
 
 // Kept thin and untested by vitest -- see the start route's comment.
 export async function GET(request: NextRequest) {
@@ -40,8 +40,9 @@ export async function GET(request: NextRequest) {
     redirect('/settings/connections?error=google_invalid_state');
   }
 
+  let rows;
   try {
-    await getConnector('google').handleOAuthCallback({
+    rows = await getConnector('google').handleOAuthCallback({
       workspaceId: decoded.workspaceId,
       userId: decoded.userId,
       code,
@@ -50,6 +51,16 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.error('Google OAuth callback failed', err);
     redirect('/settings/connections?error=google_connect_failed');
+  }
+
+  // Runs after the redirect response is sent -- a 90-day backfill across
+  // both sibling rows is too slow to block the OAuth round-trip on.
+  for (const row of rows) {
+    after(() =>
+      getConnector('google')
+        .backfill(row.id)
+        .catch((err) => console.error(`Google backfill failed for account ${row.id}`, err)),
+    );
   }
 
   redirect('/settings/connections');
