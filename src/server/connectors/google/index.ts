@@ -1,0 +1,43 @@
+import { completeGoogleConnection } from '@/src/server/connectors/google/connect';
+import { getAuthUrl } from '@/src/server/connectors/google/oauth';
+import { registerConnector } from '@/src/server/connectors/registry';
+import type { Connector } from '@/src/server/connectors/types';
+
+// Methods not yet backed by a real implementation -- each is replaced in
+// its own later Milestone 2 task (backfill: 2.12, handleWebhook: 2.13,
+// refreshToken: 2.15, disconnect: 2.16; poll has no dedicated task since
+// Google has a push mechanism, but the interface requires it as a
+// fallback for accounts that can't register a watch).
+function notImplemented(method: string): never {
+  throw new Error(`google connector: ${method}() is not implemented yet`);
+}
+
+export const googleConnector: Connector = {
+  provider: 'google',
+  capabilities: ['email', 'calendar'],
+  getAuthUrl,
+  async handleOAuthCallback(params) {
+    return completeGoogleConnection({
+      workspaceId: params.workspaceId,
+      userId: params.userId,
+      code: params.code,
+    });
+  },
+  async backfill() {
+    notImplemented('backfill');
+  },
+  async handleWebhook() {
+    notImplemented('handleWebhook');
+  },
+  async poll() {
+    notImplemented('poll');
+  },
+  async refreshToken() {
+    notImplemented('refreshToken');
+  },
+  async disconnect() {
+    notImplemented('disconnect');
+  },
+};
+
+registerConnector(googleConnector);

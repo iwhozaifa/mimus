@@ -1,4 +1,9 @@
-import { decryptToken, encryptToken } from '@/src/server/crypto/tokenVault';
+import {
+  bufferToPgBytea,
+  decryptToken,
+  encryptToken,
+  pgByteaToBuffer,
+} from '@/src/server/crypto/tokenVault';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('token vault', () => {
@@ -35,5 +40,12 @@ describe('token vault', () => {
 
     // the row encrypted under v1 must still decrypt correctly.
     await expect(decryptToken(ciphertext, keyVersion)).resolves.toBe('token-under-v1');
+  });
+
+  it('round-trips ciphertext through the Postgres bytea hex-string format', async () => {
+    const { ciphertext } = await encryptToken('token-for-pg');
+    const pgValue = bufferToPgBytea(ciphertext);
+    expect(pgValue).toMatch(/^\\x[0-9a-f]+$/);
+    expect(pgByteaToBuffer(pgValue)).toEqual(ciphertext);
   });
 });

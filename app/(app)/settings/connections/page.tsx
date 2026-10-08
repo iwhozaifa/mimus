@@ -4,7 +4,7 @@ import { connection } from 'next/server';
 import { Suspense } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { connectStubAccount, disconnectAccount } from './actions';
+import { disconnectAccount } from './actions';
 import { VisibilitySelect } from './visibility-select';
 
 export default function ConnectionsPage() {
@@ -40,11 +40,6 @@ async function ConnectionsList() {
     .eq('workspace_id', workspaceId)
     .eq('status', 'connected');
 
-  async function connect() {
-    'use server';
-    await connectStubAccount();
-  }
-
   return (
     <Card>
       <h1 className="mb-4 text-2xl font-semibold text-ink">Connections</h1>
@@ -68,9 +63,12 @@ async function ConnectionsList() {
           <li className="text-sm text-ink-muted">No connected accounts yet.</li>
         )}
       </ul>
-      <form action={connect}>
-        <Button type="submit">Connect test account (stub)</Button>
-      </form>
+      <Link
+        href="/api/connectors/google/start"
+        className="inline-flex rounded-md bg-ink px-4 py-2 text-sm font-medium text-ink-foreground transition-colors hover:bg-ink/90"
+      >
+        Connect Google
+      </Link>
     </Card>
   );
 }

@@ -59,3 +59,15 @@ export async function decryptToken(ciphertext: Buffer, keyVersion: number): Prom
   const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
   return new TextDecoder().decode(decrypted);
 }
+
+// PostgREST represents `bytea` columns as a `\x`-prefixed hex string on
+// both read and write (verified directly against the local Supabase
+// instance rather than assumed) -- these convert connected_account_secrets'
+// encrypted_access_token/encrypted_refresh_token columns to and from that.
+export function bufferToPgBytea(buffer: Buffer): string {
+  return `\\x${buffer.toString('hex')}`;
+}
+
+export function pgByteaToBuffer(value: string): Buffer {
+  return Buffer.from(value.replace(/^\\x/, ''), 'hex');
+}
