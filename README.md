@@ -93,6 +93,16 @@ If a sign-in email doesn't show up in Mailpit:
 
 For a real deployment, Supabase Cloud's default mailer is also rate-limited and meant for testing only — configure a custom SMTP provider under your Supabase project's Auth settings (`supabase/config.toml`'s commented-out `[auth.email.smtp]` block shows the shape) to have magic links actually land in users' real inboxes in production.
 
+## Outstanding setup (needs the repo owner)
+
+Code-complete work the repo owner still needs to act on — nothing here blocks further development, but each is needed before the corresponding feature can be used end-to-end:
+
+1. **Merge the open Milestone 2 PRs, in order** — each branch is based on the previous one's tip, so merging out of order will conflict: `#30 → #31 → #32 → #33 → #34 → #35 → #36`.
+2. **Google Cloud OAuth client**, for live testing of the Google connector — [console.cloud.google.com](https://console.cloud.google.com) → APIs & Services → Credentials → OAuth client ID ("Web application"). Provide `GOOGLE_OAUTH_CLIENT_ID`/`GOOGLE_OAUTH_CLIENT_SECRET` and register redirect URI `http://localhost:3000/api/connectors/google/callback` (or your deployed equivalent).
+3. **Microsoft Entra app registration**, for live testing of the Microsoft connector — [entra.microsoft.com](https://entra.microsoft.com) → App registrations → New registration → multi-tenant ("Accounts in any organizational directory and personal Microsoft accounts"). Provide `MICROSOFT_OAUTH_CLIENT_ID`/`MICROSOFT_OAUTH_CLIENT_SECRET` and register redirect URI `http://localhost:3000/api/connectors/microsoft/callback`.
+4. **Google Cloud Pub/Sub topic**, only needed for live Gmail webhook push notifications (not for OAuth or backfill) — a topic plus a publish IAM binding for `gmail-api-push@system.gserviceaccount.com`.
+5. **A deployed public HTTPS URL** (e.g. Vercel) — required before either provider's webhook subscription can be registered at all (Gmail `watch()`, Graph `/subscriptions`). Blocks the remaining webhook/renewal work for both connectors until it exists.
+
 ## Pages
 
 Sign in to reach the app shell at these routes:
