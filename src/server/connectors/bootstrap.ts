@@ -5,5 +5,6 @@
 // eslint import-boundary rule) can import it freely.
 import '@/src/server/connectors/google';
 import '@/src/server/connectors/microsoft';
+import '@/src/server/connectors/slack';
 
 export { getConnector } from '@/src/server/connectors/registry';

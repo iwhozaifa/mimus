@@ -56,10 +56,13 @@ Copy `.env.example` to `.env.local` and fill these in — all are server-only ex
 | `MICROSOFT_OAUTH_CLIENT_SECRET`        | Same as above                                     | Same as above, under "Certificates & secrets"                                                                                              |
 | `MICROSOFT_OAUTH_REDIRECT_URI`         | Same as above                                     | Must exactly match a redirect URI registered on the app, e.g. `http://localhost:3000/api/connectors/microsoft/callback`                    |
 | `MICROSOFT_OAUTH_AUTHORITY`            | Optional, defaults to the `common` authority      | Only needed if your app registration restricts sign-in to a single tenant or organizations-only                                            |
+| `SLACK_CLIENT_ID`                      | Connecting a Slack account (channels + mentions)  | [api.slack.com/apps](https://api.slack.com/apps) -> Create New App -> OAuth & Permissions                                                  |
+| `SLACK_CLIENT_SECRET`                  | Same as above                                     | Same as above, under "Basic Information" -> App Credentials                                                                                |
+| `SLACK_OAUTH_REDIRECT_URI`             | Same as above                                     | Must exactly match a redirect URL registered under "OAuth & Permissions", e.g. `http://localhost:3000/api/connectors/slack/callback`       |
 | `TOKEN_ENCRYPTION_KEY`                 | Encrypting connector OAuth tokens at rest         | Generate your own: `openssl rand -base64 32` -- not a third-party credential                                                               |
 | `TOKEN_ENCRYPTION_KEY_VERSION`         | Optional, defaults to `1`                         | Only set when rotating to a new `TOKEN_ENCRYPTION_KEY_V{n}` (see below)                                                                    |
 
-If you leave `RESEND_API_KEY` blank, invites still work — the invite link is logged to the server console instead of emailed. If you leave the Stripe vars blank, `/billing` renders fine but the Subscribe button errors when clicked; you also need at least one `plans` row with a real `stripe_price_id` (`supabase/migrations/0007_plans_feature_switches.sql`) for a plan to be checkout-able at all — the table ships empty. If you leave the Google or Microsoft OAuth vars blank, that provider's "Connect" flow redirects back with an error instead of throwing at import/build time -- everything else works without it.
+If you leave `RESEND_API_KEY` blank, invites still work — the invite link is logged to the server console instead of emailed. If you leave the Stripe vars blank, `/billing` renders fine but the Subscribe button errors when clicked; you also need at least one `plans` row with a real `stripe_price_id` (`supabase/migrations/0007_plans_feature_switches.sql`) for a plan to be checkout-able at all — the table ships empty. If you leave the Google, Microsoft, or Slack OAuth vars blank, that provider's "Connect" flow redirects back with an error instead of throwing at import/build time -- everything else works without it.
 
 ### Google connector
 
@@ -72,6 +75,12 @@ To rotate `TOKEN_ENCRYPTION_KEY`: generate a new key, set it as `TOKEN_ENCRYPTIO
 Same two-sibling-rows shape as Google (one OAuth grant -> an `email` row and a `calendar` row, each independently visible). The stored secret isn't a raw access/refresh token pair, though: MSAL (`@azure/msal-node`) never exposes a refresh token through its public API, so what's encrypted in `connected_account_secrets` is MSAL's own serialized token cache instead, rehydrated on every call via a cache plugin.
 
 Disconnecting a Microsoft account doesn't call a revoke endpoint the way Google's does -- Microsoft Graph has no per-app token revocation API. The closest thing, `POST /me/revokeSignInSessions`, invalidates the user's refresh tokens for _every_ app they've consented to, not just this one, so calling it would sign the user out of every other Microsoft app too. Disconnecting instead just deletes Mimus's own cached credentials and purges that account's content; the user's underlying Microsoft session is untouched until it naturally expires or they revoke it themselves.
+
+### Slack connector
+
+Connecting Slack grants one `connected_accounts` row per member (account_type `slack`), requesting only `channels:history`/`channels:read`/`groups:history`/`groups:read` on the member's own **user** token -- no `im:*`/`mpim:*` scope is ever requested, so Slack never grants this token visibility into DMs or group-DMs at all, and no bot-posting scope is requested either (Mimus never posts to Slack). Unlike Google/Microsoft, Slack's OAuth v2 user grant issues no refresh token and the access token doesn't expire by default, so there's nothing for `refreshToken()` to do (a documented no-op, see `src/server/connectors/slack/oauth.ts`).
+
+Connecting only stores the token today -- backfilling channel history and ingesting real-time messages via Slack's Events API are the next two Milestone 3 tasks, not yet built.
 
 ### Push notifications and renewal (code-complete, not live yet)
 
