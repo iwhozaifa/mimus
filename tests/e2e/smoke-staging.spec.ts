@@ -93,10 +93,10 @@ test('staging smoke: sign up, invite, accept, toggle visibility', async ({ page,
   await signInViaGeneratedLink(page, ownerEmail, url);
   await page.goto('/settings/connections');
   await page.getByRole('button', { name: /connect test account/i }).click();
-  const row = page.getByRole('listitem').filter({ hasText: 'google' });
+  const row = page.getByRole('listitem').filter({ hasText: 'Google Gmail' });
   await row.getByRole('combobox').selectOption('team');
   await page.reload();
   await expect(
-    page.getByRole('listitem').filter({ hasText: 'google' }).getByRole('combobox'),
+    page.getByRole('listitem').filter({ hasText: 'Google Gmail' }).getByRole('combobox'),
   ).toHaveValue('team');
 });

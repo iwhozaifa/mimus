@@ -3,7 +3,7 @@ import { revokeToken } from '@/src/server/connectors/google/oauth';
 import { decryptToken, pgByteaToBuffer } from '@/src/server/crypto/tokenVault';
 
 // One Google OAuth grant backs two sibling connected_accounts rows
-// (email + calendar) sharing one token pair, so the provider token is
+// (email + calendar, same owner_user_id and external_account_id) sharing one token pair, so the provider token is
 // only revoked once no sibling row is still connected -- disconnecting
 // one sibling must leave the other's access untouched. Each sibling's
 // own content (messages/events/people) and secrets are purged
@@ -13,7 +13,7 @@ export async function disconnectGoogleAccount(connectedAccountId: string): Promi
 
   const { data: account, error: accountError } = await supabase
     .from('connected_accounts')
-    .select('workspace_id, provider, external_account_id')
+    .select('workspace_id, owner_user_id, provider, external_account_id')
     .eq('id', connectedAccountId)
     .single();
   if (accountError) throw accountError;
@@ -22,6 +22,7 @@ export async function disconnectGoogleAccount(connectedAccountId: string): Promi
     .from('connected_accounts')
     .select('id, status')
     .eq('workspace_id', account.workspace_id)
+    .eq('owner_user_id', account.owner_user_id)
     .eq('provider', account.provider)
     .eq('external_account_id', account.external_account_id);
   if (siblingsError) throw siblingsError;

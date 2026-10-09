@@ -66,7 +66,13 @@ export async function latestInviteToken(email: string): Promise<string> {
 // this way rather than driving the actual OAuth consent screen. Must run
 // after the user has signed in at least once, since the workspace doesn't
 // exist until auto-provisioning runs on their first magic-link verification.
-export async function seedConnectedAccount(email: string): Promise<string> {
+export async function seedConnectedAccount(
+  email: string,
+  {
+    accountType = 'email',
+    externalAccountId = email,
+  }: { accountType?: 'email' | 'calendar'; externalAccountId?: string } = {},
+): Promise<string> {
   const supabase = createServiceClient();
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
@@ -88,7 +94,8 @@ export async function seedConnectedAccount(email: string): Promise<string> {
       workspace_id: membership!.workspace_id,
       owner_user_id: profile!.id,
       provider: 'google',
-      account_type: 'email',
+      account_type: accountType,
+      external_account_id: externalAccountId,
     })
     .select('id')
     .single();

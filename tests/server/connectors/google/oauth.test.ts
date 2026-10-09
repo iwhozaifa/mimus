@@ -2,6 +2,7 @@ import {
   exchangeCode,
   getAuthenticatedEmail,
   getAuthUrl,
+  isGoogleConfigured,
   refreshAccessToken,
   revokeToken,
 } from '@/src/server/connectors/google/oauth';
@@ -20,14 +21,29 @@ describe('google oauth', () => {
     vi.restoreAllMocks();
   });
 
-  it('builds an auth url with offline access, consent prompt, and the gmail+calendar scopes', async () => {
+  it('builds an auth url with offline access, account chooser + consent prompt, and the gmail+calendar scopes', async () => {
     const url = await getAuthUrl('random-state-value');
     const parsed = new URL(url);
     expect(parsed.searchParams.get('access_type')).toBe('offline');
-    expect(parsed.searchParams.get('prompt')).toBe('consent');
+    // select_account lets a user who is signed in to several Google
+    // accounts pick (or add) a different one each time they connect.
+    expect(parsed.searchParams.get('prompt')).toBe('select_account consent');
     expect(parsed.searchParams.get('state')).toBe('random-state-value');
     expect(parsed.searchParams.get('scope')).toContain('gmail.readonly');
     expect(parsed.searchParams.get('scope')).toContain('calendar.readonly');
+  });
+
+  it('reports whether all three Google OAuth env vars are set', () => {
+    expect(isGoogleConfigured()).toBe(true);
+    for (const name of [
+      'GOOGLE_OAUTH_CLIENT_ID',
+      'GOOGLE_OAUTH_CLIENT_SECRET',
+      'GOOGLE_OAUTH_REDIRECT_URI',
+    ]) {
+      vi.stubEnv(name, '');
+      expect(isGoogleConfigured()).toBe(false);
+      vi.stubEnv(name, 'set-again');
+    }
   });
 
   it('throws a clear error (not a network call) when Google OAuth env vars are unset', async () => {

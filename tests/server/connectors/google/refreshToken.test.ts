@@ -148,4 +148,55 @@ describe('refreshAndStoreTokens', () => {
     const unrelatedTokens = await storedTokens(unrelatedAccountId);
     expect(unrelatedTokens).toEqual({ accessToken: 'old-access', refreshToken: 'old-refresh' });
   });
+
+  it("never touches another user's rows for the same Google address, or disconnected rows", async () => {
+    const { workspaceId, userId } = await makeWorkspace();
+    const { userId: colleagueId } = await makeWorkspace();
+    const emailAccountId = await makeConnectedAccount(
+      workspaceId,
+      userId,
+      'email',
+      'shared@example.com',
+    );
+    // A colleague in the same workspace who connected the same mailbox
+    // holds their own, separate grant.
+    const colleagueAccountId = await makeConnectedAccount(
+      workspaceId,
+      colleagueId,
+      'email',
+      'shared@example.com',
+    );
+    const disconnectedSiblingId = await makeConnectedAccount(
+      workspaceId,
+      userId,
+      'calendar',
+      'shared@example.com',
+    );
+    await supabase
+      .from('connected_accounts')
+      .update({ status: 'disconnected' })
+      .eq('id', disconnectedSiblingId)
+      .throwOnError();
+
+    vi.spyOn(google.auth.OAuth2.prototype, 'refreshAccessToken').mockResolvedValue({
+      credentials: { access_token: 'new-access', refresh_token: 'new-refresh' },
+      res: null,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    await refreshAndStoreTokens(emailAccountId);
+
+    expect(await storedTokens(emailAccountId)).toEqual({
+      accessToken: 'new-access',
+      refreshToken: 'new-refresh',
+    });
+    expect(await storedTokens(colleagueAccountId)).toEqual({
+      accessToken: 'old-access',
+      refreshToken: 'old-refresh',
+    });
+    expect(await storedTokens(disconnectedSiblingId)).toEqual({
+      accessToken: 'old-access',
+      refreshToken: 'old-refresh',
+    });
+  });
 });
