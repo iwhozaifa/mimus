@@ -1,4 +1,5 @@
 import { createServiceClient } from '@/src/db/service';
+import { deleteSlackInstallationIfUnused } from '@/src/server/connectors/slack/installations';
 import { revokeToken } from '@/src/server/connectors/slack/oauth';
 import { decryptToken, pgByteaToBuffer } from '@/src/server/crypto/tokenVault';
 
@@ -8,6 +9,13 @@ import { decryptToken, pgByteaToBuffer } from '@/src/server/crypto/tokenVault';
 // unlike Google/Microsoft's disconnect there's no events row to purge.
 export async function disconnectSlackAccount(connectedAccountId: string): Promise<void> {
   const supabase = createServiceClient();
+
+  const { data: account } = await supabase
+    .from('connected_accounts')
+    .select('provider_team_id')
+    .eq('id', connectedAccountId)
+    .maybeSingle()
+    .throwOnError();
 
   const { data: secret } = await supabase
     .from('connected_account_secrets')
@@ -42,4 +50,10 @@ export async function disconnectSlackAccount(connectedAccountId: string): Promis
       .eq('connected_account_id', connectedAccountId)
       .throwOnError(),
   ]);
+
+  // The Slack workspace's bot token is shared by every member who
+  // connected it, so it goes only when this was the last one.
+  if (account?.provider_team_id) {
+    await deleteSlackInstallationIfUnused(account.provider_team_id as string);
+  }
 }

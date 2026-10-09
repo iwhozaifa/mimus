@@ -9,6 +9,11 @@ const googleConfigured = Boolean(
   process.env.GOOGLE_OAUTH_CLIENT_SECRET &&
   process.env.GOOGLE_OAUTH_REDIRECT_URI,
 );
+const slackConfigured = Boolean(
+  process.env.SLACK_CLIENT_ID &&
+  process.env.SLACK_CLIENT_SECRET &&
+  process.env.SLACK_OAUTH_REDIRECT_URI,
+);
 
 test('changing a connected account visibility and disconnecting persists through RLS', async ({
   page,
@@ -88,5 +93,60 @@ test('the Connect Google account link points at the OAuth start route when Googl
   } else {
     await expect(page.getByText(/isn't set up on this deployment/i)).toBeVisible();
     await expect(page.getByRole('link', { name: /connect google account/i })).toHaveCount(0);
+  }
+});
+
+test('several Slack workspaces each show as their own named connection', async ({ page }) => {
+  const email = `e2e-connections-slack-${Date.now()}@example.com`;
+  await signInViaMagicLink(page, email);
+  const workspaces = [
+    { id: `T_ACME_${Date.now()}`, name: 'Acme Corp', domain: 'acme.slack.com' },
+    { id: `T_GLOBEX_${Date.now()}`, name: 'Globex', domain: 'globex.slack.com' },
+  ];
+  for (const workspace of workspaces) {
+    await seedConnectedAccount(email, {
+      provider: 'slack',
+      externalAccountId: 'U_E2E',
+      providerTeamId: workspace.id,
+      providerTeamName: workspace.name,
+      providerTeamDomain: workspace.domain,
+    });
+  }
+
+  await page.goto('/settings/connections');
+  await expect(page.getByRole('heading', { name: 'Slack', exact: true })).toBeVisible();
+
+  for (const workspace of workspaces) {
+    const group = page.getByRole('group', { name: workspace.name });
+    await expect(group.getByText(workspace.domain)).toBeVisible();
+    await expect(group.getByRole('listitem').filter({ hasText: 'Slack' })).toHaveCount(1);
+  }
+
+  if (slackConfigured) {
+    await expect(page.getByRole('link', { name: /add another slack workspace/i })).toHaveAttribute(
+      'href',
+      '/api/connectors/slack/start',
+    );
+  } else {
+    await expect(page.getByText(/slack connection isn't set up/i)).toBeVisible();
+  }
+});
+
+test('the Connect Slack workspace link points at the OAuth start route when Slack is configured', async ({
+  page,
+}) => {
+  const email = `e2e-connections-slack-link-${Date.now()}@example.com`;
+  await signInViaMagicLink(page, email);
+
+  await page.goto('/settings/connections');
+
+  if (slackConfigured) {
+    await expect(page.getByRole('link', { name: /connect slack workspace/i })).toHaveAttribute(
+      'href',
+      '/api/connectors/slack/start',
+    );
+  } else {
+    await expect(page.getByText(/slack connection isn't set up/i)).toBeVisible();
+    await expect(page.getByRole('link', { name: /connect slack/i })).toHaveCount(0);
   }
 });

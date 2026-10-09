@@ -1,5 +1,6 @@
 import { createServiceClient } from '@/src/db/service';
 import { handleSlackEvent } from '@/src/server/connectors/slack/events';
+import { saveSlackInstallation } from '@/src/server/connectors/slack/installations';
 import { randomUUID } from 'node:crypto';
 import { createHmac } from 'node:crypto';
 import { WebClient } from '@slack/web-api';
@@ -22,18 +23,24 @@ function makeRequest(secret: string, body: unknown): Request {
   });
 }
 
+// Unique per run: test files run in parallel against one database, and
+// installations are keyed by team id alone.
+const ACME = `T_ACME_${randomUUID()}`;
+const GLOBEX = `T_GLOBEX_${randomUUID()}`;
+
 describe('handleSlackEvent', () => {
   const supabase = createServiceClient();
   const createdUserIds: string[] = [];
 
   beforeEach(() => {
     vi.stubEnv('SLACK_SIGNING_SECRET', 'test-signing-secret');
-    vi.stubEnv('SLACK_BOT_TOKEN', 'xoxb-test');
+    vi.stubEnv('TOKEN_ENCRYPTION_KEY', 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=');
   });
 
   afterEach(async () => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+    await supabase.from('slack_installations').delete().in('team_id', [ACME, GLOBEX]);
     await Promise.all(createdUserIds.map((id) => supabase.auth.admin.deleteUser(id)));
     createdUserIds.length = 0;
   });
@@ -77,6 +84,40 @@ describe('handleSlackEvent', () => {
     return { workspaceId: workspace!.id as string, connectedAccountId: account!.id as string };
   }
 
+  async function installApp(teamId: string) {
+    await saveSlackInstallation({
+      teamId,
+      teamName: teamId,
+      botToken: `xoxb-${teamId}`,
+      botUserId: 'B1',
+      workspaceId: null,
+    });
+  }
+
+  function channelEvent(teamId: string, text: string) {
+    return {
+      type: 'event_callback',
+      team_id: teamId,
+      event: {
+        type: 'message',
+        channel: 'C111',
+        channel_type: 'channel',
+        user: 'U_SENDER',
+        text,
+        ts: `${Date.now() / 1000}`,
+      },
+    };
+  }
+
+  async function messageCount(connectedAccountId: string) {
+    const { data } = await supabase
+      .from('messages')
+      .select('id')
+      .eq('connected_account_id', connectedAccountId)
+      .throwOnError();
+    return data!.length;
+  }
+
   it('answers the url_verification handshake without touching the database', async () => {
     const request = makeRequest('test-signing-secret', {
       type: 'url_verification',
@@ -107,12 +148,13 @@ describe('handleSlackEvent', () => {
   it('ingests a channel message only for members who are actually in that channel', async () => {
     const { workspaceId, connectedAccountId: memberAccountId } = await makeWorkspaceWithAccount(
       'U_MEMBER',
-      'T123',
+      ACME,
     );
     const { connectedAccountId: nonMemberAccountId } = await makeWorkspaceWithAccount(
       'U_NON_MEMBER',
-      'T123',
+      ACME,
     );
+    await installApp(ACME);
 
     vi.spyOn(WebClient.prototype, 'apiCall').mockImplementation(async (method) => {
       if (method === 'conversations.members') {
@@ -123,7 +165,7 @@ describe('handleSlackEvent', () => {
 
     const request = makeRequest('test-signing-secret', {
       type: 'event_callback',
-      team_id: 'T123',
+      team_id: ACME,
       event: {
         type: 'message',
         channel: 'C111',
@@ -192,5 +234,46 @@ describe('handleSlackEvent', () => {
 
     const response = await handleSlackEvent(request);
     expect(response.status).toBe(204);
+  });
+
+  it("resolves each Slack workspace's channel members with that workspace's own bot token", async () => {
+    const { connectedAccountId: acmeAccount } = await makeWorkspaceWithAccount('U_ACME', ACME);
+    const { connectedAccountId: globexAccount } = await makeWorkspaceWithAccount(
+      'U_GLOBEX',
+      GLOBEX,
+    );
+    await installApp(ACME);
+    await installApp(GLOBEX);
+
+    const tokensUsed: (string | undefined)[] = [];
+    vi.spyOn(WebClient.prototype, 'apiCall').mockImplementation(async function (
+      this: WebClient,
+      method,
+    ) {
+      if (method !== 'conversations.members') throw new Error(`unexpected apiCall: ${method}`);
+      tokensUsed.push(this.token);
+      return { ok: true, members: ['U_ACME', 'U_GLOBEX'] } as never;
+    });
+
+    await handleSlackEvent(makeRequest('test-signing-secret', channelEvent(ACME, 'acme news')));
+    await handleSlackEvent(makeRequest('test-signing-secret', channelEvent(GLOBEX, 'globex news')));
+
+    expect(tokensUsed).toEqual([`xoxb-${ACME}`, `xoxb-${GLOBEX}`]);
+    expect(await messageCount(acmeAccount)).toBe(1);
+    expect(await messageCount(globexAccount)).toBe(1);
+  });
+
+  it('skips (204, nothing written) an event from a Slack workspace with no stored install', async () => {
+    const { connectedAccountId } = await makeWorkspaceWithAccount('U_MEMBER', ACME);
+    const apiCallSpy = vi.spyOn(WebClient.prototype, 'apiCall');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const response = await handleSlackEvent(
+      makeRequest('test-signing-secret', channelEvent(ACME, 'hello')),
+    );
+
+    expect(response.status).toBe(204);
+    expect(apiCallSpy).not.toHaveBeenCalled();
+    expect(await messageCount(connectedAccountId)).toBe(0);
   });
 });

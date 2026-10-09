@@ -8,12 +8,25 @@ import { WebClient } from '@slack/web-api';
 // requirement -- enforced by what we ask for, not by filtering results).
 const USER_SCOPES = ['channels:history', 'channels:read', 'groups:history', 'groups:read'];
 
+// The bot token is only ever used to list a channel's members, so Events
+// API ingestion can tell which connected members may see a notification
+// (see events.ts). No chat:* scope, so it can't post; no im:*/mpim:*
+// scope, so it can't see DMs either.
+const BOT_SCOPES = ['channels:read', 'groups:read'];
+
 export interface ExchangedSlackTokens {
   accessToken: string;
   slackUserId: string;
   teamId: string;
   teamName: string | null;
+  // e.g. "acme.slack.com" -- shown beside the team name so two workspaces
+  // with similar names stay distinguishable.
+  teamDomain: string | null;
   scope: string | null;
+  // The team's own bot token, issued because BOT_SCOPES were requested.
+  // Stored per team in slack_installations (see installations.ts).
+  botAccessToken: string | null;
+  botUserId: string | null;
 }
 
 // Returns null (never throws) so importing this module never fails in CI
@@ -27,6 +40,12 @@ function createOAuthConfig() {
     return null;
   }
   return { clientId, clientSecret, redirectUri };
+}
+
+// Lets the connections page show a Connect button only when the
+// deployment's Slack app credentials are set.
+export function isSlackConfigured(): boolean {
+  return createOAuthConfig() !== null;
 }
 
 function requireOAuthConfig() {
@@ -46,6 +65,7 @@ export async function getAuthUrl(state: string): Promise<string> {
   const { clientId, redirectUri } = requireOAuthConfig();
   const url = new URL('https://slack.com/oauth/v2/authorize');
   url.searchParams.set('client_id', clientId);
+  url.searchParams.set('scope', BOT_SCOPES.join(','));
   url.searchParams.set('user_scope', USER_SCOPES.join(','));
   url.searchParams.set('redirect_uri', redirectUri);
   url.searchParams.set('state', state);
@@ -54,8 +74,8 @@ export async function getAuthUrl(state: string): Promise<string> {
 
 // oauth.v2.access is callable on an unauthenticated WebClient -- it's the
 // one method whose entire purpose is handing back the token in the first
-// place. No bot scopes are requested anywhere in this app, so
-// result.access_token (the bot token) is intentionally never read here.
+// place. result.access_token is the team's bot token (BOT_SCOPES above);
+// authed_user.access_token is the connecting member's own user token.
 export async function exchangeCode(code: string): Promise<ExchangedSlackTokens> {
   const { clientId, clientSecret, redirectUri } = requireOAuthConfig();
   const client = new WebClient();
@@ -81,8 +101,22 @@ export async function exchangeCode(code: string): Promise<ExchangedSlackTokens> 
     slackUserId: authedUser.id,
     teamId: result.team.id,
     teamName: result.team.name ?? null,
+    teamDomain: await fetchTeamDomain(authedUser.access_token),
     scope: authedUser.scope ?? null,
+    botAccessToken: result.access_token ?? null,
+    botUserId: result.bot_user_id ?? null,
   };
+}
+
+// Only used for the connections page label, so a failure here never
+// blocks the connection itself.
+async function fetchTeamDomain(userAccessToken: string): Promise<string | null> {
+  try {
+    const { url } = await new WebClient(userAccessToken).auth.test();
+    return url ? new URL(url).host : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function revokeToken(accessToken: string): Promise<void> {

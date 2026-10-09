@@ -1,10 +1,15 @@
 import { createServiceClient } from '@/src/db/service';
 import { disconnectSlackAccount } from '@/src/server/connectors/slack/disconnect';
+import { saveSlackInstallation } from '@/src/server/connectors/slack/installations';
 import { bufferToPgBytea, encryptToken } from '@/src/server/crypto/tokenVault';
 import { upsertMessage } from '@/src/server/shared/normalize';
 import { randomUUID } from 'node:crypto';
 import { WebClient } from '@slack/web-api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Unique per run: test files run in parallel against one database, and
+// installations are keyed by team id alone.
+const TEAM = `T_DISCONNECT_${randomUUID()}`;
 
 describe('disconnectSlackAccount', () => {
   const supabase = createServiceClient();
@@ -17,11 +22,12 @@ describe('disconnectSlackAccount', () => {
   afterEach(async () => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+    await supabase.from('slack_installations').delete().eq('team_id', TEAM);
     await Promise.all(createdUserIds.map((id) => supabase.auth.admin.deleteUser(id)));
     createdUserIds.length = 0;
   });
 
-  async function makeConnectedAccount() {
+  async function makeConnectedAccount(teamId: string | null = null) {
     const { data: company } = await supabase
       .from('companies')
       .insert({ name: 'Slack disconnect test co' })
@@ -51,6 +57,7 @@ describe('disconnectSlackAccount', () => {
         provider: 'slack',
         account_type: 'slack',
         external_account_id: 'U123',
+        provider_team_id: teamId,
       })
       .select('id')
       .single()
@@ -108,5 +115,34 @@ describe('disconnectSlackAccount', () => {
       .maybeSingle()
       .throwOnError();
     expect(secret).toBeNull();
+  });
+
+  it("removes the team's stored bot token only once its last connected member disconnects", async () => {
+    const first = await makeConnectedAccount(TEAM);
+    const second = await makeConnectedAccount(TEAM);
+    await saveSlackInstallation({
+      teamId: TEAM,
+      teamName: 'Acme',
+      botToken: 'xoxb-acme',
+      botUserId: 'B1',
+      workspaceId: null,
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.spyOn(WebClient.prototype, 'apiCall').mockResolvedValue({ ok: true } as any);
+
+    async function installationCount() {
+      const { data } = await supabase
+        .from('slack_installations')
+        .select('team_id')
+        .eq('team_id', TEAM)
+        .throwOnError();
+      return data!.length;
+    }
+
+    await disconnectSlackAccount(first.connectedAccountId);
+    expect(await installationCount()).toBe(1);
+
+    await disconnectSlackAccount(second.connectedAccountId);
+    expect(await installationCount()).toBe(0);
   });
 });

@@ -69,9 +69,20 @@ export async function latestInviteToken(email: string): Promise<string> {
 export async function seedConnectedAccount(
   email: string,
   {
-    accountType = 'email',
+    provider = 'google',
+    accountType = provider === 'slack' ? 'slack' : 'email',
     externalAccountId = email,
-  }: { accountType?: 'email' | 'calendar'; externalAccountId?: string } = {},
+    providerTeamId = null,
+    providerTeamName = null,
+    providerTeamDomain = null,
+  }: {
+    provider?: 'google' | 'slack';
+    accountType?: 'email' | 'calendar' | 'slack';
+    externalAccountId?: string;
+    providerTeamId?: string | null;
+    providerTeamName?: string | null;
+    providerTeamDomain?: string | null;
+  } = {},
 ): Promise<string> {
   const supabase = createServiceClient();
   const { data: profile, error: profileError } = await supabase
@@ -93,9 +104,12 @@ export async function seedConnectedAccount(
     .insert({
       workspace_id: membership!.workspace_id,
       owner_user_id: profile!.id,
-      provider: 'google',
+      provider,
       account_type: accountType,
       external_account_id: externalAccountId,
+      provider_team_id: providerTeamId,
+      provider_team_name: providerTeamName,
+      provider_team_domain: providerTeamDomain,
     })
     .select('id')
     .single();
