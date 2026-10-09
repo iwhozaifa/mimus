@@ -1,4 +1,5 @@
 import { createServiceClient } from '@/src/db/service';
+import { cache } from 'react';
 
 const READ_ONLY_STATUSES = new Set(['past_due', 'canceled']);
 
@@ -6,7 +7,8 @@ const READ_ONLY_STATUSES = new Set(['past_due', 'canceled']);
 // checks out) is treated as writable, not lapsed -- only an existing,
 // lapsed subscription locks a workspace. Scoped to one workspace: a
 // canceled workspace never affects its company's other workspaces.
-export async function isWorkspaceReadOnly(workspaceId: string): Promise<boolean> {
+// Memoized per request so the layout banner and any write guard share one query.
+export const isWorkspaceReadOnly = cache(async (workspaceId: string): Promise<boolean> => {
   const supabase = createServiceClient();
   const { data } = await supabase
     .from('workspace_subscriptions')
@@ -18,7 +20,7 @@ export async function isWorkspaceReadOnly(workspaceId: string): Promise<boolean>
     return false;
   }
   return READ_ONLY_STATUSES.has(data.status);
-}
+});
 
 export async function assertWorkspaceWritable(workspaceId: string): Promise<void> {
   if (await isWorkspaceReadOnly(workspaceId)) {
