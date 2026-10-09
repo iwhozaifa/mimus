@@ -2,12 +2,63 @@ import { createServiceClient } from '@/src/db/service';
 import { normalizeCalendarEvent } from '@/src/server/connectors/google/calendar';
 import { getAuthorizedClient } from '@/src/server/connectors/google/client';
 import { normalizeGmailMessage } from '@/src/server/connectors/google/gmail';
+import { QuotaPacer } from '@/src/server/connectors/google/pacer';
 import { withGoogleRateLimitRetry } from '@/src/server/connectors/google/retry';
 import { upsertEvent, upsertMessage } from '@/src/server/shared/normalize';
 import { google } from 'googleapis';
 
 const BACKFILL_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 
+// Gmail per-user quota costs (units) -- see
+// https://developers.google.com/workspace/gmail/api/reference/quota.
+const THREADS_LIST_COST = 10;
+const THREADS_GET_COST = 40;
+
+// Half of Gmail's 6,000 units/min/user (projects created on/after
+// 2026-05-01), leaving headroom for live sync and Google's sub-minute
+// enforcement. Override per environment if a project's quota differs.
+const DEFAULT_GMAIL_UNITS_PER_MINUTE = 3000;
+
+// Spam/trash are noise, and promotions/social (newsletters, notifications)
+// are out of scope for a chief of staff -- excluding them is the single
+// biggest quota saving on a typical inbox.
+const GMAIL_BACKFILL_EXCLUSIONS = '-in:spam -in:trash -category:promotions -category:social';
+
+function gmailUnitsPerMinute(): number {
+  const raw = Number.parseInt(process.env.GMAIL_BACKFILL_UNITS_PER_MINUTE ?? '', 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_GMAIL_UNITS_PER_MINUTE;
+}
+
+// Highest Gmail historyId already stored per thread, so a re-run (resume
+// after a failure, or a reconnect) can skip threads that haven't changed.
+async function storedThreadHistoryIds(
+  connectedAccountId: string,
+  threadIds: string[],
+): Promise<Map<string, bigint>> {
+  const stored = new Map<string, bigint>();
+  if (threadIds.length === 0) return stored;
+
+  const { data } = await createServiceClient()
+    .from('messages')
+    .select('thread_id, history_id:raw->>historyId')
+    .eq('connected_account_id', connectedAccountId)
+    .in('thread_id', threadIds)
+    .throwOnError();
+
+  for (const row of data ?? []) {
+    if (!row.thread_id || !row.history_id) continue;
+    const historyId = BigInt(row.history_id as string);
+    const current = stored.get(row.thread_id);
+    if (current === undefined || historyId > current) stored.set(row.thread_id, historyId);
+  }
+  return stored;
+}
+
+// Fetches whole threads (threads.get = 40 units for every message in the
+// conversation) rather than one messages.get (20 units) per message --
+// cheaper once a thread has 2+ messages, which most of a founder's inbox
+// does. Every call goes through a QuotaPacer so the import spends quota
+// evenly instead of bursting into Gmail's per-user rate limit.
 async function backfillGmail(
   connectedAccountId: string,
   workspaceId: string,
@@ -15,26 +66,48 @@ async function backfillGmail(
 ): Promise<void> {
   const gmail = google.gmail({ version: 'v1', auth });
   const afterEpochSeconds = Math.floor((Date.now() - BACKFILL_WINDOW_MS) / 1000);
+  const pacer = new QuotaPacer({ unitsPerMinute: gmailUnitsPerMinute() });
+  const paced = <T>(cost: number, call: () => Promise<T>) =>
+    withGoogleRateLimitRetry(
+      async () => {
+        await pacer.take(cost);
+        return call();
+      },
+      { onRateLimit: () => pacer.slowDown() },
+    );
 
   let pageToken: string | undefined;
   do {
-    const { data } = await withGoogleRateLimitRetry(() =>
-      gmail.users.messages.list({
+    const { data } = await paced(THREADS_LIST_COST, () =>
+      gmail.users.threads.list({
         userId: 'me',
-        q: `after:${afterEpochSeconds}`,
+        q: `after:${afterEpochSeconds} ${GMAIL_BACKFILL_EXCLUSIONS}`,
         pageToken,
       }),
     );
 
-    for (const ref of data.messages ?? []) {
-      const { data: full } = await withGoogleRateLimitRetry(() =>
-        gmail.users.messages.get({
-          userId: 'me',
-          id: ref.id!,
-          format: 'full',
-        }),
+    const threads = data.threads ?? [];
+    const stored = await storedThreadHistoryIds(
+      connectedAccountId,
+      threads.map((t) => t.id!),
+    );
+
+    for (const ref of threads) {
+      const storedHistoryId = stored.get(ref.id!);
+      if (
+        storedHistoryId !== undefined &&
+        ref.historyId &&
+        storedHistoryId >= BigInt(ref.historyId)
+      ) {
+        continue;
+      }
+
+      const { data: thread } = await paced(THREADS_GET_COST, () =>
+        gmail.users.threads.get({ userId: 'me', id: ref.id!, format: 'full' }),
       );
-      await upsertMessage(workspaceId, connectedAccountId, normalizeGmailMessage(full));
+      for (const message of thread.messages ?? []) {
+        await upsertMessage(workspaceId, connectedAccountId, normalizeGmailMessage(message));
+      }
     }
 
     pageToken = data.nextPageToken ?? undefined;

@@ -1,5 +1,6 @@
 import { createServiceClient } from '@/src/db/service';
 import { backfillGoogleAccount } from '@/src/server/connectors/google/backfill';
+import { sleep } from '@/src/lib/sleep';
 import { bufferToPgBytea, encryptToken } from '@/src/server/crypto/tokenVault';
 import { randomUUID } from 'node:crypto';
 import { google } from 'googleapis';
@@ -77,42 +78,64 @@ describe('backfillGoogleAccount', () => {
     return { connectedAccountId: account!.id as string, workspaceId: workspace!.id as string };
   }
 
-  it('backfills Gmail messages for an email account, idempotently', async () => {
-    const { connectedAccountId } = await makeConnectedAccount('email');
+  function threadsApi() {
+    return Object.getPrototypeOf(
+      google.gmail({ version: 'v1', auth: new google.auth.OAuth2() }).users.threads,
+    );
+  }
 
-    const fixtureMessage: gmail_v1.Schema$Message = {
-      id: 'msg-backfill-1',
-      threadId: 'thread-1',
+  function makeMessage(
+    id: string,
+    threadId: string,
+    historyId = '100',
+    subject = `Subject ${id}`,
+  ): gmail_v1.Schema$Message {
+    return {
+      id,
+      threadId,
+      historyId,
       labelIds: ['INBOX'],
       internalDate: '1700000000000',
       payload: {
         headers: [
           { name: 'From', value: 'Jane Founder <jane@example.com>' },
-          { name: 'Subject', value: 'Backfilled message' },
+          { name: 'Subject', value: subject },
         ],
       },
     };
+  }
 
-    const messagesListPrototype = Object.getPrototypeOf(
-      google.gmail({ version: 'v1', auth: new google.auth.OAuth2() }).users.messages,
-    );
-    const listSpy = vi
-      .spyOn(messagesListPrototype, 'list')
-      .mockResolvedValueOnce({ data: { messages: [{ id: 'msg-backfill-1' }] } } as never);
-    const getSpy = vi
-      .spyOn(messagesListPrototype, 'get')
-      .mockResolvedValueOnce({ data: fixtureMessage } as never);
+  async function storedMessageIds(connectedAccountId: string) {
+    const { data } = await supabase
+      .from('messages')
+      .select('provider_message_id')
+      .eq('connected_account_id', connectedAccountId)
+      .throwOnError();
+    return data!.map((m) => m.provider_message_id).sort();
+  }
+
+  it('backfills every message of each Gmail thread, idempotently', async () => {
+    const { connectedAccountId } = await makeConnectedAccount('email');
+
+    const thread: gmail_v1.Schema$Thread = {
+      id: 'thread-1',
+      historyId: '100',
+      messages: [
+        makeMessage('msg-1', 'thread-1', '90', 'Kickoff'),
+        makeMessage('msg-2', 'thread-1'),
+      ],
+    };
+    const listSpy = vi.spyOn(threadsApi(), 'list').mockResolvedValueOnce({
+      data: { threads: [{ id: 'thread-1', historyId: '100' }] },
+    } as never);
+    const getSpy = vi.spyOn(threadsApi(), 'get').mockResolvedValueOnce({ data: thread } as never);
 
     await backfillGoogleAccount(connectedAccountId);
 
-    const { data: messages } = await supabase
-      .from('messages')
-      .select('provider_message_id, subject')
-      .eq('connected_account_id', connectedAccountId)
-      .throwOnError();
-    expect(messages).toHaveLength(1);
-    expect(messages![0].subject).toBe('Backfilled message');
-
+    expect(await storedMessageIds(connectedAccountId)).toEqual(['msg-1', 'msg-2']);
+    expect(getSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'me', id: 'thread-1', format: 'full' }),
+    );
     const { data: account } = await supabase
       .from('connected_accounts')
       .select('backfill_completed_at')
@@ -121,18 +144,158 @@ describe('backfillGoogleAccount', () => {
       .throwOnError();
     expect(account!.backfill_completed_at).not.toBeNull();
 
-    // Re-running must not duplicate the row (idempotency via the unique
-    // (connected_account_id, provider_message_id) constraint from 2.3).
-    listSpy.mockResolvedValueOnce({ data: { messages: [{ id: 'msg-backfill-1' }] } } as never);
-    getSpy.mockResolvedValueOnce({ data: fixtureMessage } as never);
+    // Re-running with a changed thread (historyId advanced) re-fetches it
+    // and must not duplicate rows (unique (connected_account_id,
+    // provider_message_id) constraint from 2.3).
+    listSpy.mockResolvedValueOnce({
+      data: { threads: [{ id: 'thread-1', historyId: '200' }] },
+    } as never);
+    getSpy.mockResolvedValueOnce({ data: { ...thread, historyId: '200' } } as never);
     await backfillGoogleAccount(connectedAccountId);
 
-    const { data: messagesAfterRerun } = await supabase
-      .from('messages')
-      .select('id')
-      .eq('connected_account_id', connectedAccountId)
+    expect(getSpy).toHaveBeenCalledTimes(2);
+    expect(await storedMessageIds(connectedAccountId)).toEqual(['msg-1', 'msg-2']);
+  });
+
+  it('lists only the last 90 days and excludes spam, trash, promotions and social', async () => {
+    const { connectedAccountId } = await makeConnectedAccount('email');
+    const listSpy = vi
+      .spyOn(threadsApi(), 'list')
+      .mockResolvedValueOnce({ data: { threads: [] } } as never);
+
+    await backfillGoogleAccount(connectedAccountId);
+
+    const { q } = listSpy.mock.calls[0][0] as { q: string };
+    const afterSeconds = Number(q.match(/after:(\d+)/)![1]);
+    const ninetyDaysAgo = (Date.now() - 90 * 24 * 60 * 60 * 1000) / 1000;
+    expect(Math.abs(afterSeconds - ninetyDaysAgo)).toBeLessThan(60);
+    for (const term of ['-in:spam', '-in:trash', '-category:promotions', '-category:social']) {
+      expect(q.split(' ')).toContain(term);
+    }
+  });
+
+  it('skips threads already imported and unchanged, so a resumed backfill spends no quota on them', async () => {
+    const { connectedAccountId } = await makeConnectedAccount('email');
+
+    vi.spyOn(threadsApi(), 'list')
+      .mockResolvedValueOnce({
+        data: { threads: [{ id: 'old-thread', historyId: '100' }] },
+      } as never)
+      .mockResolvedValueOnce({
+        data: {
+          threads: [
+            { id: 'old-thread', historyId: '100' },
+            { id: 'new-thread', historyId: '300' },
+          ],
+        },
+      } as never);
+    const getSpy = vi
+      .spyOn(threadsApi(), 'get')
+      .mockResolvedValueOnce({
+        data: {
+          id: 'old-thread',
+          historyId: '100',
+          messages: [makeMessage('old-1', 'old-thread')],
+        },
+      } as never)
+      .mockResolvedValueOnce({
+        data: {
+          id: 'new-thread',
+          historyId: '300',
+          messages: [makeMessage('new-1', 'new-thread', '300')],
+        },
+      } as never);
+
+    await backfillGoogleAccount(connectedAccountId);
+    await backfillGoogleAccount(connectedAccountId);
+
+    expect(getSpy.mock.calls.map(([params]) => (params as { id: string }).id)).toEqual([
+      'old-thread',
+      'new-thread',
+    ]);
+    expect(await storedMessageIds(connectedAccountId)).toEqual(['new-1', 'old-1']);
+  });
+
+  it('paginates through multiple pages of Gmail threads', async () => {
+    const { connectedAccountId } = await makeConnectedAccount('email');
+
+    vi.spyOn(threadsApi(), 'list')
+      .mockResolvedValueOnce({
+        data: { threads: [{ id: 'page1-thread', historyId: '1' }], nextPageToken: 'page-2' },
+      } as never)
+      .mockResolvedValueOnce({
+        data: { threads: [{ id: 'page2-thread', historyId: '1' }] },
+      } as never);
+    vi.spyOn(threadsApi(), 'get')
+      .mockResolvedValueOnce({
+        data: { id: 'page1-thread', messages: [makeMessage('page1-msg', 'page1-thread')] },
+      } as never)
+      .mockResolvedValueOnce({
+        data: { id: 'page2-thread', messages: [makeMessage('page2-msg', 'page2-thread')] },
+      } as never);
+
+    await backfillGoogleAccount(connectedAccountId);
+
+    expect(await storedMessageIds(connectedAccountId)).toEqual(['page1-msg', 'page2-msg']);
+  });
+
+  it('paces Gmail calls against the per-user quota budget', async () => {
+    const { connectedAccountId } = await makeConnectedAccount('email');
+    vi.mocked(sleep).mockClear();
+
+    vi.spyOn(threadsApi(), 'list').mockResolvedValueOnce({
+      data: {
+        threads: [
+          { id: 't1', historyId: '1' },
+          { id: 't2', historyId: '1' },
+        ],
+      },
+    } as never);
+    vi.spyOn(threadsApi(), 'get')
+      .mockResolvedValueOnce({ data: { id: 't1', messages: [makeMessage('m1', 't1')] } } as never)
+      .mockResolvedValueOnce({ data: { id: 't2', messages: [makeMessage('m2', 't2')] } } as never);
+
+    await backfillGoogleAccount(connectedAccountId);
+
+    // threads.list (10) then two threads.get (40 each) at the default 3,000
+    // units/min (800ms per threads.get). The mocked sleep doesn't advance
+    // the clock, so exact waits depend on DB latency -- QuotaPacer's own
+    // unit tests pin the arithmetic; this only proves backfill is wired to it.
+    const waits = vi.mocked(sleep).mock.calls.map(([ms]) => ms);
+    expect(waits.length).toBeGreaterThanOrEqual(1);
+    expect(waits.every((ms) => ms > 0 && ms <= 1000)).toBe(true);
+  });
+
+  it('retries past a Gmail per-user quota error instead of abandoning the backfill', async () => {
+    const { connectedAccountId } = await makeConnectedAccount('email');
+
+    vi.spyOn(threadsApi(), 'list').mockResolvedValueOnce({
+      data: { threads: [{ id: 'quota-thread', historyId: '1' }] },
+    } as never);
+    vi.spyOn(threadsApi(), 'get')
+      .mockRejectedValueOnce(
+        Object.assign(new Error("Quota exceeded for quota metric 'Total Query Cost'"), {
+          status: 403,
+          response: {
+            status: 403,
+            data: { error: { errors: [{ reason: 'rateLimitExceeded' }] } },
+          },
+        }),
+      )
+      .mockResolvedValueOnce({
+        data: { id: 'quota-thread', messages: [makeMessage('quota-msg', 'quota-thread')] },
+      } as never);
+
+    await backfillGoogleAccount(connectedAccountId);
+
+    const { data: account } = await supabase
+      .from('connected_accounts')
+      .select('backfill_completed_at')
+      .eq('id', connectedAccountId)
+      .single()
       .throwOnError();
-    expect(messagesAfterRerun).toHaveLength(1);
+    expect(account!.backfill_completed_at).not.toBeNull();
+    expect(await storedMessageIds(connectedAccountId)).toEqual(['quota-msg']);
   });
 
   it('backfills Calendar events for a calendar account, idempotently', async () => {
@@ -171,79 +334,5 @@ describe('backfillGoogleAccount', () => {
       .eq('connected_account_id', connectedAccountId)
       .throwOnError();
     expect(eventsAfterRerun).toHaveLength(1);
-  });
-
-  it('paginates through multiple pages of Gmail results', async () => {
-    const { connectedAccountId } = await makeConnectedAccount('email');
-
-    const makeFixture = (id: string): gmail_v1.Schema$Message => ({
-      id,
-      labelIds: ['INBOX'],
-      internalDate: '1700000000000',
-      payload: { headers: [{ name: 'From', value: 'jane@example.com' }] },
-    });
-
-    const messagesListPrototype = Object.getPrototypeOf(
-      google.gmail({ version: 'v1', auth: new google.auth.OAuth2() }).users.messages,
-    );
-    vi.spyOn(messagesListPrototype, 'list')
-      .mockResolvedValueOnce({
-        data: { messages: [{ id: 'page1-msg' }], nextPageToken: 'page-2' },
-      } as never)
-      .mockResolvedValueOnce({ data: { messages: [{ id: 'page2-msg' }] } } as never);
-    vi.spyOn(messagesListPrototype, 'get')
-      .mockResolvedValueOnce({ data: makeFixture('page1-msg') } as never)
-      .mockResolvedValueOnce({ data: makeFixture('page2-msg') } as never);
-
-    await backfillGoogleAccount(connectedAccountId);
-
-    const { data: messages } = await supabase
-      .from('messages')
-      .select('provider_message_id')
-      .eq('connected_account_id', connectedAccountId)
-      .throwOnError();
-    expect(messages!.map((m) => m.provider_message_id).sort()).toEqual(['page1-msg', 'page2-msg']);
-  });
-
-  it('retries past a Gmail per-user quota error instead of abandoning the backfill', async () => {
-    const { connectedAccountId } = await makeConnectedAccount('email');
-
-    const messagesListPrototype = Object.getPrototypeOf(
-      google.gmail({ version: 'v1', auth: new google.auth.OAuth2() }).users.messages,
-    );
-    vi.spyOn(messagesListPrototype, 'list').mockResolvedValueOnce({
-      data: { messages: [{ id: 'quota-msg' }] },
-    } as never);
-    vi.spyOn(messagesListPrototype, 'get')
-      .mockRejectedValueOnce(
-        Object.assign(new Error("Quota exceeded for quota metric 'Total Query Cost'"), {
-          status: 403,
-          response: { status: 403, data: { error: { errors: [{ reason: 'rateLimitExceeded' }] } } },
-        }),
-      )
-      .mockResolvedValueOnce({
-        data: {
-          id: 'quota-msg',
-          labelIds: ['INBOX'],
-          internalDate: '1700000000000',
-          payload: { headers: [{ name: 'From', value: 'jane@example.com' }] },
-        },
-      } as never);
-
-    await backfillGoogleAccount(connectedAccountId);
-
-    const { data: account } = await supabase
-      .from('connected_accounts')
-      .select('backfill_completed_at')
-      .eq('id', connectedAccountId)
-      .single()
-      .throwOnError();
-    expect(account!.backfill_completed_at).not.toBeNull();
-    const { data: messages } = await supabase
-      .from('messages')
-      .select('provider_message_id')
-      .eq('connected_account_id', connectedAccountId)
-      .throwOnError();
-    expect(messages!.map((m) => m.provider_message_id)).toEqual(['quota-msg']);
   });
 });

@@ -50,6 +50,14 @@ describe('withGoogleRateLimitRetry', () => {
     expect(sleep.mock.calls.map(([ms]) => ms)).toEqual([1000, 2000]);
   });
 
+  it('calls onRateLimit on each rate-limit hit so callers can slow down', async () => {
+    const onRateLimit = vi.fn();
+    const call = vi.fn().mockRejectedValueOnce(quotaError()).mockResolvedValueOnce('ok');
+
+    await withGoogleRateLimitRetry(call, { sleep: async () => {}, onRateLimit });
+    expect(onRateLimit).toHaveBeenCalledTimes(1);
+  });
+
   it('rethrows non-rate-limit errors immediately without retrying', async () => {
     const sleep = vi.fn<(ms: number) => Promise<void>>(async () => {});
     const call = vi.fn().mockRejectedValue(new Error('boom'));

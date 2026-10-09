@@ -69,7 +69,9 @@ If you leave `RESEND_API_KEY` blank, invites still work — the invite link is l
 
 ### Google connector
 
-Connecting a Google account creates **two** `connected_accounts` rows from one OAuth grant (`account_type` `email` and `calendar`), each independently visible (Private/Team/Company) and each backfilling 90 days of Gmail messages or Calendar events respectively. Tokens are encrypted at rest (AES-256-GCM, `TOKEN_ENCRYPTION_KEY`) in `connected_account_secrets`, a table with no RLS policies at all -- only server-side service-role code ever reads them.
+Connecting a Google account creates **two** `connected_accounts` rows from one OAuth grant (`account_type` `email` and `calendar`), each independently visible (Private/Team/Company) and each backfilling 90 days of Gmail messages or Calendar events respectively.
+
+The Gmail backfill is built around Gmail's per-user quota (6,000 units/min for Cloud projects created on/after 2026-05-01): it fetches whole threads (`threads.get`, 40 units for every message in the conversation) rather than one `messages.get` (20 units) per message; skips spam, trash, Promotions and Social; skips threads whose stored `historyId` shows they're already imported and unchanged, so re-running it after an interruption resumes cheaply; and paces every call through `QuotaPacer` (`src/server/connectors/google/pacer.ts`) at `GMAIL_BACKFILL_UNITS_PER_MINUTE` (default 3,000), halving the rate on any rate-limit hit before retrying with backoff. Tokens are encrypted at rest (AES-256-GCM, `TOKEN_ENCRYPTION_KEY`) in `connected_account_secrets`, a table with no RLS policies at all -- only server-side service-role code ever reads them.
 
 To rotate `TOKEN_ENCRYPTION_KEY`: generate a new key, set it as `TOKEN_ENCRYPTION_KEY_V2` (keep the old `TOKEN_ENCRYPTION_KEY` around -- existing rows still need it to decrypt, tracked per-row via `key_version`), set `TOKEN_ENCRYPTION_KEY_VERSION=2` so new encryptions use it, and deploy both the app (Vercel env) and Supabase Edge Functions (`supabase secrets set`) -- separate stores, both need every active key version.
 

@@ -26,6 +26,8 @@ export interface RetryOptions {
   maxAttempts?: number;
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
+  // Called on every rate-limit hit, e.g. so a QuotaPacer can slow down.
+  onRateLimit?: () => void;
 }
 
 // 1s, 2s, 4s ... capped at 64s, plus up to 1s of jitter. Eight attempts
@@ -35,13 +37,15 @@ const MAX_DELAY_MS = 64_000;
 
 export async function withGoogleRateLimitRetry<T>(
   call: () => Promise<T>,
-  { maxAttempts = 8, sleep = defaultSleep, random = Math.random }: RetryOptions = {},
+  { maxAttempts = 8, sleep = defaultSleep, random = Math.random, onRateLimit }: RetryOptions = {},
 ): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
       return await call();
     } catch (err) {
-      if (attempt >= maxAttempts || !isGoogleRateLimitError(err)) throw err;
+      if (!isGoogleRateLimitError(err)) throw err;
+      onRateLimit?.();
+      if (attempt >= maxAttempts) throw err;
       const backoff = Math.min(BASE_DELAY_MS * 2 ** (attempt - 1), MAX_DELAY_MS);
       await sleep(backoff + Math.floor(random() * 1000));
     }
