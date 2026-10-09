@@ -1,6 +1,6 @@
 import { createServiceClient } from '@/src/db/service';
 import { completeGoogleConnection } from '@/src/server/connectors/google/connect';
-import { pgByteaToBuffer } from '@/src/server/crypto/tokenVault';
+import { decryptToken, pgByteaToBuffer } from '@/src/server/crypto/tokenVault';
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -96,5 +96,99 @@ describe('completeGoogleConnection', () => {
     await expect(
       completeGoogleConnection({ workspaceId, userId, code: 'fake-code' }),
     ).rejects.toThrow(/did not return a refresh token/);
+  });
+
+  async function activeRows(workspaceId: string, userId: string) {
+    const { data } = await supabase
+      .from('connected_accounts')
+      .select('id, account_type, external_account_id, status, visibility')
+      .eq('workspace_id', workspaceId)
+      .eq('owner_user_id', userId)
+      .neq('status', 'disconnected')
+      .throwOnError();
+    return data!;
+  }
+
+  async function storedAccessToken(connectedAccountId: string) {
+    const { data: secret } = await supabase
+      .from('connected_account_secrets')
+      .select('encrypted_access_token, key_version')
+      .eq('connected_account_id', connectedAccountId)
+      .single()
+      .throwOnError();
+    return decryptToken(
+      pgByteaToBuffer(secret!.encrypted_access_token as string),
+      secret!.key_version,
+    );
+  }
+
+  it('connects a second, different Google account for the same user alongside the first', async () => {
+    const { workspaceId, userId } = await makeWorkspace();
+
+    await completeGoogleConnection({ workspaceId, userId, code: 'code-1' });
+    vi.mocked(getAuthenticatedEmail).mockResolvedValue('second@example.com');
+    const second = await completeGoogleConnection({ workspaceId, userId, code: 'code-2' });
+
+    expect(second.map((r) => r.external_account_id)).toEqual([
+      'second@example.com',
+      'second@example.com',
+    ]);
+    const rows = await activeRows(workspaceId, userId);
+    expect(rows).toHaveLength(4);
+    expect(new Set(rows.map((r) => r.external_account_id))).toEqual(
+      new Set(['founder@example.com', 'second@example.com']),
+    );
+  });
+
+  it('reconnecting the same Google account reuses its rows, rotating tokens and keeping visibility', async () => {
+    const { workspaceId, userId } = await makeWorkspace();
+    const first = await completeGoogleConnection({ workspaceId, userId, code: 'code-1' });
+    const emailRow = first.find((r) => r.account_type === 'email')!;
+    await supabase
+      .from('connected_accounts')
+      .update({ visibility: 'team', status: 'needs_reauth' })
+      .eq('id', emailRow.id)
+      .throwOnError();
+
+    vi.mocked(exchangeCode).mockResolvedValue({
+      accessToken: 'access-rotated',
+      refreshToken: 'refresh-rotated',
+      expiryDate: null,
+      scope: null,
+    });
+    // Google addresses are case-insensitive.
+    vi.mocked(getAuthenticatedEmail).mockResolvedValue('Founder@Example.com');
+    const second = await completeGoogleConnection({ workspaceId, userId, code: 'code-2' });
+
+    expect(second.map((r) => r.id).sort()).toEqual(first.map((r) => r.id).sort());
+    const rows = await activeRows(workspaceId, userId);
+    expect(rows).toHaveLength(2);
+    const reconnectedEmail = rows.find((r) => r.id === emailRow.id)!;
+    expect(reconnectedEmail.status).toBe('connected');
+    expect(reconnectedEmail.visibility).toBe('team');
+    for (const row of rows) {
+      expect(await storedAccessToken(row.id)).toBe('access-rotated');
+    }
+  });
+
+  it('reconnecting after a disconnect creates fresh rows', async () => {
+    const { workspaceId, userId } = await makeWorkspace();
+    const first = await completeGoogleConnection({ workspaceId, userId, code: 'code-1' });
+    await supabase
+      .from('connected_accounts')
+      .update({ status: 'disconnected' })
+      .in(
+        'id',
+        first.map((r) => r.id),
+      )
+      .throwOnError();
+
+    const second = await completeGoogleConnection({ workspaceId, userId, code: 'code-2' });
+
+    expect(second).toHaveLength(2);
+    for (const row of second) {
+      expect(first.map((r) => r.id)).not.toContain(row.id);
+    }
+    expect(await activeRows(workspaceId, userId)).toHaveLength(2);
   });
 });

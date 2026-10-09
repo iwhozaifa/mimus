@@ -23,17 +23,29 @@ export interface ExchangedTokens {
   scope: string | null;
 }
 
+// App-level credentials, set once per deployment by whoever runs Mimus --
+// end users never supply them; they only click Connect and approve on
+// Google's consent screen.
+export function isGoogleConfigured(): boolean {
+  return Boolean(
+    process.env.GOOGLE_OAUTH_CLIENT_ID &&
+    process.env.GOOGLE_OAUTH_CLIENT_SECRET &&
+    process.env.GOOGLE_OAUTH_REDIRECT_URI,
+  );
+}
+
 // Returns null (never throws) so importing this module never fails in CI
 // or local dev where Google credentials aren't configured yet -- only
 // actually calling one of the functions below without them does.
 function createOAuthClient() {
-  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
-  const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI;
-  if (!clientId || !clientSecret || !redirectUri) {
+  if (!isGoogleConfigured()) {
     return null;
   }
-  return new google.auth.OAuth2({ clientId, clientSecret, redirectUri });
+  return new google.auth.OAuth2({
+    clientId: process.env.GOOGLE_OAUTH_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+    redirectUri: process.env.GOOGLE_OAUTH_REDIRECT_URI,
+  });
 }
 
 // Exported so other Google-connector modules (client.ts, building an
@@ -56,7 +68,11 @@ export function requireOAuthClient() {
 export async function getAuthUrl(state: string): Promise<string> {
   return requireOAuthClient().generateAuthUrl({
     access_type: 'offline',
-    prompt: 'consent',
+    // select_account always shows Google's account chooser, so a user
+    // signed in to several Google accounts can connect each of them in
+    // turn; consent guarantees a refresh token on every connect.
+    prompt: 'select_account consent',
+    include_granted_scopes: true,
     scope: SCOPES,
     state,
   });
@@ -87,8 +103,8 @@ export async function refreshAccessToken(refreshToken: string): Promise<Exchange
 }
 
 // On-demand refresh (e.g. after a provider API 401) -- fans the new token
-// pair out to every sibling connected_accounts row sharing
-// (workspace_id, provider, external_account_id), since one Google OAuth
+// pair out to every still-active sibling connected_accounts row sharing
+// (workspace_id, owner_user_id, provider, external_account_id), since one Google OAuth
 // grant produces two rows (email + calendar) whose tokens must never
 // drift apart.
 export async function refreshAndStoreTokens(connectedAccountId: string): Promise<void> {
@@ -96,7 +112,7 @@ export async function refreshAndStoreTokens(connectedAccountId: string): Promise
 
   const { data: account, error: accountError } = await supabase
     .from('connected_accounts')
-    .select('workspace_id, provider, external_account_id')
+    .select('workspace_id, owner_user_id, provider, external_account_id')
     .eq('id', connectedAccountId)
     .single();
   if (accountError) throw accountError;
@@ -129,8 +145,10 @@ export async function refreshAndStoreTokens(connectedAccountId: string): Promise
     .from('connected_accounts')
     .select('id')
     .eq('workspace_id', account.workspace_id)
+    .eq('owner_user_id', account.owner_user_id)
     .eq('provider', account.provider)
-    .eq('external_account_id', account.external_account_id);
+    .eq('external_account_id', account.external_account_id)
+    .neq('status', 'disconnected');
   if (siblingsError) throw siblingsError;
 
   await Promise.all(

@@ -189,4 +189,38 @@ describe('disconnectGoogleAccount', () => {
       .throwOnError();
     expect(calendarSecret).toBeNull();
   });
+
+  it('revokes the grant even when another user still has the same Google address connected', async () => {
+    const { workspaceId, userId } = await makeWorkspace();
+    const { userId: colleagueId } = await makeWorkspace();
+    const accountId = await makeConnectedAccount(
+      workspaceId,
+      userId,
+      'email',
+      'shared@example.com',
+    );
+    const colleagueAccountId = await makeConnectedAccount(
+      workspaceId,
+      colleagueId,
+      'email',
+      'shared@example.com',
+    );
+
+    const revokeSpy = vi
+      .spyOn(google.auth.OAuth2.prototype, 'revokeToken')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .mockResolvedValue({} as any);
+
+    await disconnectGoogleAccount(accountId);
+
+    // The colleague's row is their own grant, not a sibling of this one.
+    expect(revokeSpy).toHaveBeenCalledWith('access-123');
+    const { data: colleagueAccount } = await supabase
+      .from('connected_accounts')
+      .select('status')
+      .eq('id', colleagueAccountId)
+      .single()
+      .throwOnError();
+    expect(colleagueAccount!.status).toBe('connected');
+  });
 });

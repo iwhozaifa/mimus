@@ -1,6 +1,15 @@
 import { expect, test } from '@playwright/test';
 import { seedConnectedAccount, signInViaMagicLink } from './helpers';
 
+// Google's OAuth client is app-level config set once per deployment: a dev
+// machine usually has it in .env.local, CI never does. The page must
+// handle both, so these tests assert whichever state applies.
+const googleConfigured = Boolean(
+  process.env.GOOGLE_OAUTH_CLIENT_ID &&
+  process.env.GOOGLE_OAUTH_CLIENT_SECRET &&
+  process.env.GOOGLE_OAUTH_REDIRECT_URI,
+);
+
 test('changing a connected account visibility and disconnecting persists through RLS', async ({
   page,
 }) => {
@@ -10,8 +19,9 @@ test('changing a connected account visibility and disconnecting persists through
 
   await page.goto('/settings/connections');
 
-  const row = page.getByRole('listitem').filter({ hasText: 'google' });
+  const row = page.getByRole('listitem').filter({ hasText: 'Google Gmail' });
   await expect(row).toBeVisible();
+  await expect(page.getByRole('group', { name: email })).toBeVisible();
   await expect(row.getByRole('combobox')).toHaveValue('private');
 
   await row.getByRole('combobox').selectOption('team');
@@ -22,24 +32,61 @@ test('changing a connected account visibility and disconnecting persists through
   // service-role bypass), not just held in client-side state. The select's
   // onChange fires the update as an unawaited Server Action call, so retry
   // the reload+check instead of assuming it has already landed.
-  let rowAfterReload = page.getByRole('listitem').filter({ hasText: 'google' });
+  let rowAfterReload = page.getByRole('listitem').filter({ hasText: 'Google Gmail' });
   await expect(async () => {
     await page.reload();
-    rowAfterReload = page.getByRole('listitem').filter({ hasText: 'google' });
+    rowAfterReload = page.getByRole('listitem').filter({ hasText: 'Google Gmail' });
     await expect(rowAfterReload.getByRole('combobox')).toHaveValue('team');
   }).toPass({ timeout: 10_000 });
 
   await rowAfterReload.getByRole('button', { name: /disconnect/i }).click();
-  await expect(page.getByRole('listitem').filter({ hasText: 'google' })).toHaveCount(0);
+  await expect(page.getByRole('listitem').filter({ hasText: 'Google Gmail' })).toHaveCount(0);
 });
 
-test('the Connect Google link points at the OAuth start route', async ({ page }) => {
+test('several Google accounts each show as Google Gmail and Google Calendar under their address', async ({
+  page,
+}) => {
+  const email = `e2e-connections-multi-${Date.now()}@example.com`;
+  const work = `work-${Date.now()}@example.com`;
+  const personal = `personal-${Date.now()}@example.com`;
+  await signInViaMagicLink(page, email);
+  for (const externalAccountId of [work, personal]) {
+    await seedConnectedAccount(email, { accountType: 'email', externalAccountId });
+    await seedConnectedAccount(email, { accountType: 'calendar', externalAccountId });
+  }
+
+  await page.goto('/settings/connections');
+
+  for (const address of [work, personal]) {
+    const group = page.getByRole('group', { name: address });
+    await expect(group.getByRole('listitem').filter({ hasText: 'Google Gmail' })).toHaveCount(1);
+    await expect(group.getByRole('listitem').filter({ hasText: 'Google Calendar' })).toHaveCount(1);
+  }
+
+  if (googleConfigured) {
+    await expect(page.getByRole('link', { name: /add another google account/i })).toHaveAttribute(
+      'href',
+      '/api/connectors/google/start',
+    );
+  }
+});
+
+test('the Connect Google account link points at the OAuth start route when Google is configured', async ({
+  page,
+}) => {
   const email = `e2e-connections-link-${Date.now()}@example.com`;
   await signInViaMagicLink(page, email);
 
   await page.goto('/settings/connections');
-  await expect(page.getByRole('link', { name: /connect google/i })).toHaveAttribute(
-    'href',
-    '/api/connectors/google/start',
-  );
+  await expect(page.getByRole('heading', { name: 'Gmail & Google Calendar' })).toBeVisible();
+
+  if (googleConfigured) {
+    await expect(page.getByRole('link', { name: /connect google account/i })).toHaveAttribute(
+      'href',
+      '/api/connectors/google/start',
+    );
+  } else {
+    await expect(page.getByText(/isn't set up on this deployment/i)).toBeVisible();
+    await expect(page.getByRole('link', { name: /connect google account/i })).toHaveCount(0);
+  }
 });

@@ -75,6 +75,16 @@ If you leave `RESEND_API_KEY` blank, invites still work — the invite link is l
 
 Connecting a Google account creates **two** `connected_accounts` rows from one OAuth grant (`account_type` `email` and `calendar`), each independently visible (Private/Team/Company) and each backfilling 90 days of Gmail messages or Calendar events respectively.
 
+For users this is click-and-connect: on `/settings/connections` they click **Connect Google account**, pick an account in Google's chooser (the auth URL uses `prompt=select_account consent`), approve read-only Gmail and Calendar access, and the page lists that address with a **Google Gmail** and a **Google Calendar** row. **Add another Google account** connects further addresses for the same user, each with its own pair of rows. Reconnecting an address that's already connected (e.g. one marked "Needs reconnect") refreshes its tokens in place instead of adding duplicates, keeping each row's visibility and synced content.
+
+Users never handle keys. The `GOOGLE_OAUTH_*` variables are the app's own OAuth client, set **once per deployment** by whoever runs Mimus. Google has no dynamic client registration, so every app that reads Gmail needs one (MCP-style connectors work the same way). When they're missing, the connections page says Google isn't set up instead of showing a Connect button. To enable Google for users:
+
+1. Create an OAuth client ("Web application") in Google Cloud → APIs & Services → Credentials, with the Gmail and Google Calendar APIs enabled.
+2. Add authorised redirect URIs: `http://127.0.0.1:3000/api/connectors/google/callback` for dev and `https://<your-domain>/api/connectors/google/callback` for production.
+3. Set `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` and `GOOGLE_OAUTH_REDIRECT_URI`, in `.env.local` locally and in the Vercel project's environment variables in production.
+4. While the OAuth consent screen is in **Testing**, add each Google account that should connect as a test user. They'll see an "unverified app" warning, and their refresh tokens expire after 7 days.
+5. To open it to anyone: set the consent screen to **In production** and complete Google's verification. `gmail.readonly` is a restricted scope, so this includes a CASA Tier 2 assessment, and there's a 100-user cap until it's verified.
+
 The Gmail backfill is built around Gmail's per-user quota (6,000 units/min for Cloud projects created on/after 2026-05-01): it fetches whole threads (`threads.get`, 40 units for every message in the conversation) rather than one `messages.get` (20 units) per message; skips spam, trash, Promotions and Social; skips threads whose stored `historyId` shows they're already imported and unchanged, so re-running it after an interruption resumes cheaply; and paces every call through `QuotaPacer` (`src/server/connectors/google/pacer.ts`) at `GMAIL_BACKFILL_UNITS_PER_MINUTE` (default 3,000), halving the rate on any rate-limit hit before retrying with backoff. Tokens are encrypted at rest (AES-256-GCM, `TOKEN_ENCRYPTION_KEY`) in `connected_account_secrets`, a table with no RLS policies at all -- only server-side service-role code ever reads them.
 
 To rotate `TOKEN_ENCRYPTION_KEY`: generate a new key, set it as `TOKEN_ENCRYPTION_KEY_V2` (keep the old `TOKEN_ENCRYPTION_KEY` around -- existing rows still need it to decrypt, tracked per-row via `key_version`), set `TOKEN_ENCRYPTION_KEY_VERSION=2` so new encryptions use it, and deploy both the app (Vercel env) and Supabase Edge Functions (`supabase secrets set`) -- separate stores, both need every active key version.
@@ -160,17 +170,17 @@ Code-complete work the repo owner still needs to act on — nothing here blocks 
 
 Sign in to reach the app shell at these routes:
 
-| Route                            | What it's for                                                                                              |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `/sky`                           | Morning-brief landing page -- greeting, KPI tiles, "needs you" items, department rows (mock data until M6) |
-| `/canopy`, `/ground`             | Department kanban and per-deal detail views (mock data until M6)                                           |
-| Ask bar (top nav)                | Ask Mimus a question; answers come with clickable sources                                                  |
-| `/sources/{message\|event}/{id}` | Where a clicked source opens -- the email or calendar event, if you're allowed to see it                   |
-| `/members`                       | Invite teammates, change roles, remove members                                                             |
-| `/settings/connections`          | Connect Google, Microsoft, Slack or Calendly and set each row's visibility (private/team/company)          |
-| `/billing`                       | Plans and current subscription, Stripe Checkout button                                                     |
-| `/feature-switches`              | Owner-only toggles for the four product areas (money/pipeline/projects/canopy)                             |
-| `/audit-log`                     | Placeholder — becomes the AI agent activity log once the agent ships (Milestone 4+)                        |
+| Route                            | What it's for                                                                                                   |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `/sky`                           | Morning-brief landing page -- greeting, KPI tiles, "needs you" items, department rows (mock data until M6)      |
+| `/canopy`, `/ground`             | Department kanban and per-deal detail views (mock data until M6)                                                |
+| Ask bar (top nav)                | Ask Mimus a question; answers come with clickable sources                                                       |
+| `/sources/{message\|event}/{id}` | Where a clicked source opens -- the email or calendar event, if you're allowed to see it                        |
+| `/members`                       | Invite teammates, change roles, remove members                                                                  |
+| `/settings/connections`          | Connect one or more Google accounts (Gmail & Calendar), Microsoft, Slack or Calendly; set each row's visibility |
+| `/billing`                       | Plans and current subscription, Stripe Checkout button                                                          |
+| `/feature-switches`              | Owner-only toggles for the four product areas (money/pipeline/projects/canopy)                                  |
+| `/audit-log`                     | Placeholder — becomes the AI agent activity log once the agent ships (Milestone 4+)                             |
 
 `/billing`'s checkout button calls real Stripe Checkout code but has no test-mode keys configured yet (`STRIPE_SECRET_KEY` is blank in `.env.example`) — it will error until those are added.
 

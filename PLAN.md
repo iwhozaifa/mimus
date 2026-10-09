@@ -147,6 +147,7 @@ Each AI skill declares `{ name, nature, defaultTier, defaultPriority, needs: { s
 - **External accounts needed at start:** Google Cloud project (OAuth client, Pub/Sub topic, consent screen → CASA Tier 2 queue) — ask for this first; Microsoft Entra multi-tenant app (admin-consent flow) — ask when Google is demoed and Microsoft work begins.
 - **Status:** all code merged (PRs #30–#37), plus Gmail quota fixes (#46, #47).
   - **Google DoD met locally (2026-10-09):** a real account connected, and 90 days of mail and calendar backfilled. Live testing surfaced three setup issues, now documented in the README: OAuth must run on `127.0.0.1:3000` (cookies are host-bound, so a `localhost` redirect URI breaks the state check), `TOKEN_ENCRYPTION_KEY` must be set, and the Gmail backfill must respect the per-user quota.
+  - **Google multi-account (2026-10-09):** one user can connect several Google accounts through Google's account chooser. Reconnecting an address reuses its rows. The connections page groups rows by address and labels them Google Gmail and Google Calendar. Opening it to users beyond the consent screen's test users needs Google verification and CASA (see External accounts).
   - **Microsoft DoD** is still pending the repo owner's Entra credentials. Gmail push (`watch()`) is still pending a Pub/Sub topic and a deployed URL.
 
 ### Milestone 3 — Slack + Calendly ✅ code-complete
