@@ -6,6 +6,9 @@ import { google } from 'googleapis';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { calendar_v3, gmail_v1 } from 'googleapis';
 
+// Rate-limit retries back off for real seconds; skip the wait in tests.
+vi.mock('@/src/lib/sleep', () => ({ sleep: vi.fn(async () => {}) }));
+
 describe('backfillGoogleAccount', () => {
   const supabase = createServiceClient();
   const createdUserIds: string[] = [];
@@ -200,5 +203,47 @@ describe('backfillGoogleAccount', () => {
       .eq('connected_account_id', connectedAccountId)
       .throwOnError();
     expect(messages!.map((m) => m.provider_message_id).sort()).toEqual(['page1-msg', 'page2-msg']);
+  });
+
+  it('retries past a Gmail per-user quota error instead of abandoning the backfill', async () => {
+    const { connectedAccountId } = await makeConnectedAccount('email');
+
+    const messagesListPrototype = Object.getPrototypeOf(
+      google.gmail({ version: 'v1', auth: new google.auth.OAuth2() }).users.messages,
+    );
+    vi.spyOn(messagesListPrototype, 'list').mockResolvedValueOnce({
+      data: { messages: [{ id: 'quota-msg' }] },
+    } as never);
+    vi.spyOn(messagesListPrototype, 'get')
+      .mockRejectedValueOnce(
+        Object.assign(new Error("Quota exceeded for quota metric 'Total Query Cost'"), {
+          status: 403,
+          response: { status: 403, data: { error: { errors: [{ reason: 'rateLimitExceeded' }] } } },
+        }),
+      )
+      .mockResolvedValueOnce({
+        data: {
+          id: 'quota-msg',
+          labelIds: ['INBOX'],
+          internalDate: '1700000000000',
+          payload: { headers: [{ name: 'From', value: 'jane@example.com' }] },
+        },
+      } as never);
+
+    await backfillGoogleAccount(connectedAccountId);
+
+    const { data: account } = await supabase
+      .from('connected_accounts')
+      .select('backfill_completed_at')
+      .eq('id', connectedAccountId)
+      .single()
+      .throwOnError();
+    expect(account!.backfill_completed_at).not.toBeNull();
+    const { data: messages } = await supabase
+      .from('messages')
+      .select('provider_message_id')
+      .eq('connected_account_id', connectedAccountId)
+      .throwOnError();
+    expect(messages!.map((m) => m.provider_message_id)).toEqual(['quota-msg']);
   });
 });
