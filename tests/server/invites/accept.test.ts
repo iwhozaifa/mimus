@@ -87,4 +87,26 @@ describe('acceptInvite', () => {
 
     await expect(acceptInvite({ token, userId: randomUUID() })).rejects.toThrow();
   });
+
+  it('accepts without changing the role when the user is already a member', async () => {
+    // The first test made the invitee a manager of this workspace.
+    const token = await insertInvite({ role: 'member' });
+
+    await expect(acceptInvite({ token, userId: inviteeId })).resolves.toBeUndefined();
+
+    const { data: memberships } = await supabase
+      .from('workspace_members')
+      .select('role')
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', inviteeId)
+      .throwOnError();
+    expect(memberships).toEqual([{ role: 'manager' }]);
+
+    const { data: invite } = await supabase
+      .from('invites')
+      .select('status')
+      .eq('token', token)
+      .single();
+    expect(invite?.status).toBe('accepted');
+  });
 });

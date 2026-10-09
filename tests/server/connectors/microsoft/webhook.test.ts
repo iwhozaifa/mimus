@@ -369,8 +369,11 @@ describe('microsoft webhook', () => {
 
       expect(result.renewed).toContain(dueAccountId);
       expect(result.renewed).not.toContain(freshAccountId);
+      // renewGraphSubscriptionsIfNeeded is intentionally a global query, and
+      // other test files run in parallel against the same database -- so only
+      // assert on this test's own accounts, not on the total call count.
       expect(api).toHaveBeenCalledWith('/subscriptions/sub-due');
-      expect(api).toHaveBeenCalledTimes(1);
+      expect(api).not.toHaveBeenCalledWith('/subscriptions/sub-fresh');
     });
 
     it('falls back to registering a fresh subscription when renewing a lapsed one fails', async () => {

@@ -18,12 +18,24 @@ export async function acceptInvite(params: { token: string; userId: string }): P
     throw new Error('Invite has expired');
   }
 
-  const { error: memberError } = await supabase.from('workspace_members').insert({
-    workspace_id: invite.workspace_id,
-    user_id: params.userId,
-    role: invite.role,
-  });
-  if (memberError) throw memberError;
+  // Already a member (e.g. invited twice): keep their current role --
+  // changing it is an owner action, not something an invite link does.
+  const { data: existing, error: existingError } = await supabase
+    .from('workspace_members')
+    .select('id')
+    .eq('workspace_id', invite.workspace_id)
+    .eq('user_id', params.userId)
+    .maybeSingle();
+  if (existingError) throw existingError;
+
+  if (!existing) {
+    const { error: memberError } = await supabase.from('workspace_members').insert({
+      workspace_id: invite.workspace_id,
+      user_id: params.userId,
+      role: invite.role,
+    });
+    if (memberError) throw memberError;
+  }
 
   const { error: updateError } = await supabase
     .from('invites')

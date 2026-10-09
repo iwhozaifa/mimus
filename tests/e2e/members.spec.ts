@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { createServiceClient } from '@/src/db/service';
 import { latestInviteToken, latestMagicLink, signInViaMagicLink } from './helpers';
 
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3000';
@@ -35,6 +36,28 @@ test('owner invites, promotes, and removes a teammate through real RLS', async (
   await inviteePage.goto(magicLink);
   await expect(inviteePage.getByText(/joined the workspace/i)).toBeVisible();
   await inviteeContext.close();
+
+  // Signing in through the invite must not also auto-provision the
+  // invitee's own workspace: exactly one membership, the owner's.
+  const supabase = createServiceClient();
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, email')
+    .in('email', [ownerEmail, inviteeEmail])
+    .throwOnError();
+  const idOf = (email: string) => profiles!.find((p) => p.email === email)!.id;
+  const { data: ownerMembership } = await supabase
+    .from('workspace_members')
+    .select('workspace_id')
+    .eq('user_id', idOf(ownerEmail))
+    .single()
+    .throwOnError();
+  const { data: inviteeMemberships } = await supabase
+    .from('workspace_members')
+    .select('workspace_id')
+    .eq('user_id', idOf(inviteeEmail))
+    .throwOnError();
+  expect(inviteeMemberships).toEqual([{ workspace_id: ownerMembership!.workspace_id }]);
 
   await page.reload();
   const row = page.getByRole('listitem').filter({ hasText: inviteeEmail });
