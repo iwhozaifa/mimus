@@ -128,4 +128,8 @@ export async function signInViaMagicLink(page: Page, email: string): Promise<voi
 
   const link = await latestMagicLink(email);
   await page.goto(link);
+  // The link lands on `/` by default, whose redirect to /sky streams in
+  // after load, so goto() can resolve before it happens. Wait for the final
+  // page, or the caller's next navigation gets interrupted by that redirect.
+  await page.waitForURL((url) => url.pathname !== '/' && !url.pathname.startsWith('/auth/'));
 }
