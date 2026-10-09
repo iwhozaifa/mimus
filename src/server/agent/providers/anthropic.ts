@@ -77,6 +77,9 @@ export function createAnthropicProvider({
               })),
             }
           : {}),
+        ...(request.toolChoice
+          ? { tool_choice: { type: 'tool' as const, name: request.toolChoice.name } }
+          : {}),
         messages: request.messages.map(toApiMessage),
       });
       return {

@@ -104,6 +104,25 @@ describe('anthropic provider', () => {
     });
   });
 
+  it('forces a specific tool when toolChoice is set', async () => {
+    const { create, client } = fakeClient({
+      model: 'claude-haiku-5-5',
+      stop_reason: 'tool_use',
+      content: [],
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+    await createAnthropicProvider({ client }).complete({
+      tier: 'fast',
+      maxTokens: 64,
+      tools: [{ name: 'classify', description: 'c', inputSchema: { type: 'object' } }],
+      toolChoice: { name: 'classify' },
+      messages: [{ role: 'user', content: 'x' }],
+    });
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ tool_choice: { type: 'tool', name: 'classify' } }),
+    );
+  });
+
   it('maps any other stop reason to "other"', async () => {
     const { client } = fakeClient({
       model: 'claude-haiku-5-5',
