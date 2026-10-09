@@ -31,6 +31,8 @@ export interface AiCompletionRequest {
   system?: string;
   messages: AiMessage[];
   tools?: AiToolDefinition[];
+  // Force the model to call this tool (e.g. the router's classify tool).
+  toolChoice?: { name: string };
   maxTokens: number;
 }
 
