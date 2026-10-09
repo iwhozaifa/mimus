@@ -17,6 +17,7 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.132.1",
     "@azure/msal-node": "^7.0.1",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@slack/web-api": "^8.2.0",
