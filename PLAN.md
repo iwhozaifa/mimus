@@ -1,8 +1,8 @@
 # Mimus V1 (First Stage, Web App) — Implementation Plan
 
-> **Status (2026-10-09):** Milestones 1–4 are code-complete. Milestone 5 (Scheduling + approvals) is next. See `AGENTS.md` for the practices this plan established.
+> **Status (2026-10-09):** Milestones 1–4 are merged to `main` (PRs #1–#51). Milestone 5 (Scheduling + approvals) is next. See `AGENTS.md` for the practices this plan established, and "Work outside the milestone plan" below for the front end, performance and Gmail-quota work done between milestones.
 >
-> Code-complete here means: every task's tests pass locally and in CI, but live end-to-end testing against a real Google/Microsoft/Slack/Calendly account is still blocked on the repo owner providing those accounts' credentials (see "External accounts" below) and, for push notifications/webhooks specifically, on a deployed public URL existing at all. Nothing about that is unusual for this build — it's the same posture Milestone 1's Stripe/Resend/Vercel items shipped in, and M2/M3 just inherited it for four more providers.
+> Code-complete here means: every task's tests pass locally and in CI. Live end-to-end testing has been done for the **Google connector only** (a real Gmail + Calendar account connected and backfilled locally, 2026-10-09). Microsoft, Slack, Calendly and the Anthropic API are still waiting on the repo owner's credentials (see "External accounts" below), and push notifications/webhooks on every provider are waiting on a deployed public URL.
 
 ## Context
 
@@ -145,7 +145,9 @@ Each AI skill declares `{ name, nature, defaultTier, defaultPriority, needs: { s
 - Tests first: normalize tests, OAuth-callback tests, webhook signature verification, backfill idempotency (unique constraint from §Schema).
 - DoD: connecting a real Google account backfills 90 days of mail+calendar visible per the M1 RLS matrix; disconnect purges rows. Repeat for Microsoft.
 - **External accounts needed at start:** Google Cloud project (OAuth client, Pub/Sub topic, consent screen → CASA Tier 2 queue) — ask for this first; Microsoft Entra multi-tenant app (admin-consent flow) — ask when Google is demoed and Microsoft work begins.
-- **Status:** all code merged (PRs #30–#37). DoD itself — connecting a _real_ account — is still pending the repo owner's Google Cloud/Microsoft Entra credentials; see "External accounts" below and the README's "Outstanding setup" section.
+- **Status:** all code merged (PRs #30–#37), plus Gmail quota fixes (#46, #47).
+  - **Google DoD met locally (2026-10-09):** a real account connected, and 90 days of mail and calendar backfilled. Live testing surfaced three setup issues, now documented in the README: OAuth must run on `127.0.0.1:3000` (cookies are host-bound, so a `localhost` redirect URI breaks the state check), `TOKEN_ENCRYPTION_KEY` must be set, and the Gmail backfill must respect the per-user quota.
+  - **Microsoft DoD** is still pending the repo owner's Entra credentials. Gmail push (`watch()`) is still pending a Pub/Sub topic and a deployed URL.
 
 ### Milestone 3 — Slack + Calendly ✅ code-complete
 
@@ -154,19 +156,50 @@ Each AI skill declares `{ name, nature, defaultTier, defaultPriority, needs: { s
 - Tests first: Slack tool test asserting no DMs, only channels-member-is-in + mentions, always the asking user's own token; Calendly sync test asserting **no outbound write call exists in the module** (read-only, never books through Calendly).
 - DoD: Slack messages/mentions and Calendly bookings normalize into `messages`/`events` per RLS.
 - **External accounts needed at start:** Slack app (Events API scopes, no bot posting); Calendly OAuth app.
-- **Status:** all code merged/in-review (PRs #38–#42: Slack OAuth connect → backfill → Events API ingestion → AI tool surface, then Calendly). Both connectors' DoD — real messages/bookings actually flowing in — is still pending the repo owner's Slack app/Calendly OAuth app credentials, same as M2.
+- **Status:** all code merged (#38, then the rest of the stack consolidated as #44). Both connectors' DoD — real messages/bookings actually flowing in — is still pending the repo owner's Slack app/Calendly OAuth app credentials.
   - Slack's "no DMs" requirement is enforced twice over: no `im:*`/`mpim:*` OAuth scope is ever requested (so Slack can't grant that visibility at all), and `channel_type` is filtered again at ingestion as defense in depth.
   - Calendly's "no outbound write" requirement is enforced structurally, not just by a test: `src/server/connectors/calendly/client.ts`'s content-reading function has no `method` parameter, so a write call against `scheduled_events`/`invitees` can't be constructed through that module at all. The one legitimate Calendly write (this connector's own webhook-subscription creation) lives entirely in a separate module (`webhook.ts`).
   - `connected_accounts.provider_team_id` (migration 0015) is a new generic column both connectors ended up needing — Slack's workspace and Calendly's organization are both "the provider-side tenant a notification belongs to," distinct from `external_account_id` (the person).
 
 ### Milestone 4 — Mimus AI + model router ✅ code-complete
 
-> Built as PRs #48–#51. Tiers: fast/standard/deep = Haiku 5.5 / Sonnet 5.5 / Opus 5.5. Ask Mimus lives in the top-nav bar (`POST /api/agent/ask`), and sources open at `/sources/{message|event}/{id}`. Still open: a real `ANTHROPIC_API_KEY` for live testing; real `plans.ai_spend_cap_usd` numbers (the cap is monthly, UTC); bring-your-own-key (an encrypted per-workspace key) is not built yet; the server-minted JWT for background (no-session) AI runs is deferred to M6's morning brief, its first consumer.
+**Status:** all code merged (2026-10-09), as four PRs:
+
+| PR  | What it added                                                                                                                                                                                                                           |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #48 | `AiProvider` interface, Anthropic provider, tiers fast/standard/deep = Haiku 5.5 / Sonnet 5.5 / Opus 5.5, per-request cost from published pricing                                                                                       |
+| #49 | Router step 1 (named module, no model call), step 2 (fast-tier classify tool, one tier up below 0.6 confidence), step 3 escalation (retry once, one tier up); migration 0016 `agent_spend_counters` with the 80% tier drop / 100% block |
+| #50 | The five tools, each running under the asker's own session; the adversarial test proving the database, not the model, blocks another Member's Private data                                                                              |
+| #51 | `askMimus()` (Who → Router → Tools → Answer, logged to `agent_logs` + spend counters), `POST /api/agent/ask`, the top-nav Ask bar, `/sources/{message\|event}/{id}`                                                                     |
+
+Still open:
+
+- A real `ANTHROPIC_API_KEY` for live testing (the API is mocked in every test).
+- Real `plans.ai_spend_cap_usd` numbers (the cap is per calendar month, UTC).
+- Bring-your-own-key (an encrypted per-workspace key).
+- The server-minted JWT for background (no-session) AI runs, deferred to M6's morning brief, its first consumer.
+
+Plan of record:
 
 - `src/server/agent/providers/{types,anthropic}.ts`, `router/{classifier,tiers,escalate}.ts`, `modules/*`, `tools/*` (searchMessages, searchEvents, slackSearch, draftEmail, proposeMeetingTimes), `src/server/billing/spendCaps.ts`.
 - Tests first: router classification test; tool test asserting a Member's search call never returns another Member's Private-visibility data even on a crafted prompt-injection attempt (**the test must prove the database rejected the row, not that the model declined**); spend-cap tier-drop test.
 - DoD: a free-text question resolves via Who→Router→Tools→Answer with tappable sources, logged to `agent_logs`.
 - **External account needed:** Anthropic API key (managed by default; bring-your-own-key stores an encrypted key per workspace).
+
+### Work outside the milestone plan
+
+Done between milestones, at the repo owner's request:
+
+- **Front end (PRs #18–#25):** Tailwind v4, the `(app)` shell, `/members`, `/billing`, `/feature-switches`, `/audit-log`, restyled sign-in/invite. Also closed RLS gaps on `workspaces`, `workspace_members` peer visibility and `profiles`.
+- **Sky / Canopy / Ground redesign (PRs #28, #29):** the client's three mockups built at `/sky`, `/canopy`, `/ground` against typed mock data (`src/mock/`). This supersedes the old widget-tile Sky / per-person Ground spec in M6; extend these pages rather than rebuilding them.
+- **Performance (PR #45):** request-scoped `cache()` on `getCurrentWorkspaceContext`/`isWorkspaceReadOnly`. Further steps (asymmetric JWT signing keys, `useOptimistic`, RLS `(select auth.uid())` + indexes, a `preview` script) are planned but not started.
+- **Gmail quota (PRs #46, #47):** retry with backoff on Gmail's 403 quota errors; thread-based backfill paced by `QuotaPacer`, which skips unchanged threads on resume and excludes spam, trash, Promotions and Social.
+
+Known open issues:
+
+- A newly invited user can end up in two workspaces: the auth callback auto-provisions one before the invite is accepted.
+- `tests/server/connectors/microsoft/webhook.test.ts`'s renewal test occasionally races under parallel test files (a global `toHaveBeenCalledTimes(1)`).
+- New Gmail/Outlook mail doesn't sync after the initial backfill yet. The first `watch()`/Graph subscription is registered by the renewal cron (it picks up accounts with no watch), and that cron isn't scheduled until there's a deployed URL (and, for Gmail, a Pub/Sub topic).
 
 ### Milestone 5 — Scheduling + approvals
 
@@ -188,17 +221,17 @@ Each AI skill declares `{ name, nature, defaultTier, defaultPriority, needs: { s
 
 ## External accounts — when each is first needed
 
-| Credential                             | Needed at        | Status                                                                                  |
-| -------------------------------------- | ---------------- | --------------------------------------------------------------------------------------- |
-| Vercel project                         | M1.16            | Pending — not yet logged in; app runs locally against staging DB for now                |
-| Supabase Cloud project                 | M1.16            | ✅ Done — `mimus-staging` project created and migrated                                  |
-| Resend account                         | M1.7             | ✅ Done — sandbox mode (no verified domain yet)                                         |
-| Stripe account                         | M1.11            | Pending — skeleton built, no real test-mode keys yet                                    |
-| Google Cloud project (OAuth + Pub/Sub) | M2 start         | Pending — connector code-complete and merged, blocked on this for live testing          |
-| Microsoft Entra app (multi-tenant)     | M2, after Google | Pending — connector code-complete and merged, blocked on this for live testing          |
-| Slack app                              | M3 start         | Pending — connector code-complete, PRs open (#38–#41), blocked on this for live testing |
-| Calendly OAuth app                     | M3 start         | Pending — connector code-complete, PR open (#42), blocked on this for live testing      |
-| Anthropic API key                      | M4 start         | Pending — M4 code-complete with the API mocked in tests; needed for live testing        |
+| Credential                             | Needed at        | Status                                                                            |
+| -------------------------------------- | ---------------- | --------------------------------------------------------------------------------- |
+| Vercel project                         | M1.16            | Pending — not yet logged in; app runs locally against staging DB for now          |
+| Supabase Cloud project                 | M1.16            | ✅ Done — `mimus-staging` project created and migrated                            |
+| Resend account                         | M1.7             | ✅ Done — sandbox mode (no verified domain yet)                                   |
+| Stripe account                         | M1.11            | Pending — skeleton built, no real test-mode keys yet                              |
+| Google Cloud project (OAuth + Pub/Sub) | M2 start         | OAuth ✅ done for local dev (live-tested 2026-10-09); Pub/Sub topic still pending |
+| Microsoft Entra app (multi-tenant)     | M2, after Google | Pending — connector code-complete and merged, blocked on this for live testing    |
+| Slack app                              | M3 start         | Pending — connector merged, blocked on this for live testing                      |
+| Calendly OAuth app                     | M3 start         | Pending — connector merged, blocked on this for live testing                      |
+| Anthropic API key                      | M4 start         | Pending — M4 merged with the API mocked in tests; needed for live testing         |
 
 Ask for each at the point it's first needed — never invent a value.
 
