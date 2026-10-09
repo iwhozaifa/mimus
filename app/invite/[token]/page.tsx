@@ -1,5 +1,6 @@
 import { createClient } from '@/src/db/server';
 import { acceptInvite } from '@/src/server/invites/acceptInvite';
+import { createWorkspaceForNewUser } from '@/src/server/workspaces/createWorkspace';
 import Link from 'next/link';
 import { connection } from 'next/server';
 
@@ -24,6 +25,7 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
   const supabase = await createClient();
   const { data } = await supabase.auth.getClaims();
   const userId = data?.claims.sub as string | undefined;
+  const email = data?.claims.email as string | undefined;
 
   if (!userId) {
     return (
@@ -42,11 +44,18 @@ export default async function InvitePage({ params }: { params: Promise<{ token: 
   try {
     await acceptInvite({ token, userId });
   } catch (error) {
+    // Sign-in skips auto-provisioning for a pending invite, so if the
+    // invite stopped being acceptable since then (revoked, expired) give
+    // the user their own workspace now. A no-op if they already have one.
+    if (email) await createWorkspaceForNewUser(userId, email);
     return (
       <Card>
-        <p className="text-sm text-red-600">
+        <p className="mb-4 text-sm text-red-600">
           {error instanceof Error ? error.message : 'Could not accept invite.'}
         </p>
+        <Link href="/" className="font-medium text-indigo-600 hover:text-indigo-500">
+          Go to Mimus
+        </Link>
       </Card>
     );
   }

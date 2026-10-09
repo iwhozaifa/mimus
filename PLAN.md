@@ -197,8 +197,7 @@ Done between milestones, at the repo owner's request:
 
 Known open issues:
 
-- A newly invited user can end up in two workspaces: the auth callback auto-provisions one before the invite is accepted.
-- `tests/server/connectors/microsoft/webhook.test.ts`'s renewal test occasionally races under parallel test files (a global `toHaveBeenCalledTimes(1)`).
+- Users who signed up through an invite before the fix (which stopped auto-provisioning a workspace when signing in to accept a pending invite) may still belong to two workspaces, and get an arbitrary one of them until a workspace switcher exists. Left as is by decision.
 - New Gmail/Outlook mail doesn't sync after the initial backfill yet. The first `watch()`/Graph subscription is registered by the renewal cron (it picks up accounts with no watch), and that cron isn't scheduled until there's a deployed URL (and, for Gmail, a Pub/Sub topic).
 
 ### Milestone 5 — Scheduling + approvals
