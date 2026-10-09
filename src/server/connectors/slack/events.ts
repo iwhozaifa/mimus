@@ -1,5 +1,5 @@
 import { createServiceClient } from '@/src/db/service';
-import { getBotClient } from '@/src/server/connectors/slack/client';
+import { getBotClient } from '@/src/server/connectors/slack/installations';
 import { normalizeSlackMessage } from '@/src/server/connectors/slack/messages';
 import { verifySlackSignature } from '@/src/server/connectors/slack/signature';
 import { upsertMessage } from '@/src/server/shared/normalize';
@@ -29,14 +29,14 @@ interface SlackEventBody {
 }
 
 // Resolves which of our own connected members can actually see this
-// channel, via the single app-wide bot token -- the one place this
+// channel, via that Slack workspace's own bot token -- the one place this
 // connector reads with something other than a member's own token,
 // because membership has to be known *before* any member-scoped action
 // makes sense. The member-scoped guarantee lives in what gets written
 // afterward: a message is only ever upserted into a connected_account
 // whose own external_account_id came back in this member list.
-async function membersOfChannel(channelId: string): Promise<Set<string>> {
-  const bot = getBotClient();
+async function membersOfChannel(teamId: string, channelId: string): Promise<Set<string>> {
+  const bot = await getBotClient(teamId);
   const members = new Set<string>();
   let cursor: string | undefined;
   do {
@@ -65,7 +65,19 @@ async function ingestChannelEvent(teamId: string, event: SlackEventPayload): Pro
   if (error) throw error;
   if (!accounts?.length) return;
 
-  const members = await membersOfChannel(event.channel);
+  // A team whose install predates per-team bot tokens (or whose last
+  // member just disconnected) has no stored token. Skip rather than throw:
+  // a 5xx makes Slack retry an event that can never succeed.
+  let members: Set<string>;
+  try {
+    members = await membersOfChannel(teamId, event.channel);
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith('No Slack installation for team')) {
+      console.warn(`Skipping Slack event: ${err.message}`);
+      return;
+    }
+    throw err;
+  }
   const normalized = normalizeSlackMessage(event.channel, event);
 
   for (const account of accounts) {

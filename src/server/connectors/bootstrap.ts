@@ -10,6 +10,8 @@ import '@/src/server/connectors/slack';
 
 export { getConnector } from '@/src/server/connectors/registry';
 
-// Whether this deployment has Google's app-level OAuth client set up, so
-// the connections page can show a Connect button only when it will work.
+// Whether this deployment has each provider's app-level OAuth client set
+// up, so the connections page can show a Connect button only when it
+// will work.
 export { isGoogleConfigured } from '@/src/server/connectors/google/oauth';
+export { isSlackConfigured } from '@/src/server/connectors/slack/oauth';

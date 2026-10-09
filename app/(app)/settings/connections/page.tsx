@@ -1,10 +1,10 @@
-import { isGoogleConfigured } from '@/src/server/connectors/bootstrap';
+import { isGoogleConfigured, isSlackConfigured } from '@/src/server/connectors/bootstrap';
 import { connectionLabel } from '@/src/server/connectors/labels';
 import type { AccountType, Provider } from '@/src/server/connectors/types';
 import { getCurrentWorkspaceContext } from '@/src/server/workspaces/getCurrentWorkspaceContext';
 import Link from 'next/link';
 import { connection } from 'next/server';
-import { Suspense } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -18,6 +18,8 @@ interface AccountRow {
   provider: Provider;
   account_type: AccountType;
   external_account_id: string | null;
+  provider_team_name: string | null;
+  provider_team_domain: string | null;
   visibility: 'private' | 'team' | 'company';
   status: 'connected' | 'needs_reauth';
 }
@@ -27,6 +29,10 @@ const ERROR_MESSAGES: Record<string, string> = {
   google_invalid_state: 'That Google sign-in expired or came from another session. Try again.',
   google_connect_failed: "Couldn't finish connecting Google. Try again.",
   google_not_configured: "Google connection isn't set up on this deployment yet.",
+  slack_denied: 'Slack connection was cancelled.',
+  slack_invalid_state: 'That Slack sign-in expired or came from another session. Try again.',
+  slack_connect_failed: "Couldn't finish connecting Slack. Try again.",
+  slack_not_configured: "Slack connection isn't set up on this deployment yet.",
 };
 
 const linkButton =
@@ -63,14 +69,19 @@ async function ConnectionsList({ searchParams }: { searchParams: SearchParams })
 
   const { data } = await supabase
     .from('connected_accounts')
-    .select('id, provider, account_type, external_account_id, visibility, status')
+    .select(
+      'id, provider, account_type, external_account_id, provider_team_name, provider_team_domain, visibility, status',
+    )
     .eq('workspace_id', workspaceId)
     .in('status', ['connected', 'needs_reauth'])
     .order('created_at');
   const accounts = (data ?? []) as AccountRow[];
 
-  const googleAccounts = accounts.filter((account) => account.provider === 'google');
-  const otherAccounts = accounts.filter((account) => account.provider !== 'google');
+  const byProvider = (provider: Provider) =>
+    accounts.filter((account) => account.provider === provider);
+  const otherAccounts = accounts.filter(
+    (account) => account.provider !== 'google' && account.provider !== 'slack',
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -88,7 +99,8 @@ async function ConnectionsList({ searchParams }: { searchParams: SearchParams })
         </p>
       )}
 
-      <GoogleCard accounts={googleAccounts} configured={isGoogleConfigured()} />
+      <GoogleCard accounts={byProvider('google')} configured={isGoogleConfigured()} />
+      <SlackCard accounts={byProvider('slack')} configured={isSlackConfigured()} />
 
       <Card>
         <h2 className="mb-4 text-lg font-semibold text-ink">Other connectors</h2>
@@ -103,15 +115,93 @@ async function ConnectionsList({ searchParams }: { searchParams: SearchParams })
           <Link href="/api/connectors/microsoft/start" className={linkButton}>
             Connect Microsoft
           </Link>
-          <Link href="/api/connectors/slack/start" className={linkButton}>
-            Connect Slack
-          </Link>
           <Link href="/api/connectors/calendly/start" className={linkButton}>
             Connect Calendly
           </Link>
         </div>
       </Card>
     </div>
+  );
+}
+
+interface ConnectionGroup {
+  key: string;
+  heading: string;
+  subheading?: string | null;
+  rows: AccountRow[];
+}
+
+// The shared MCP-style connector card: one group per connected account
+// (Google address or Slack workspace), each with its own Reconnect link
+// when needed, then a Connect / Add another button -- or a note for the
+// operator when this deployment has no app credentials for the provider.
+function ConnectorCard({
+  title,
+  description,
+  groups,
+  startHref,
+  configured,
+  connectLabel,
+  addAnotherLabel,
+  notConfiguredNote,
+}: {
+  title: string;
+  description: ReactNode;
+  groups: ConnectionGroup[];
+  startHref: string;
+  configured: boolean;
+  connectLabel: string;
+  addAnotherLabel: string;
+  notConfiguredNote: ReactNode;
+}) {
+  return (
+    <Card>
+      <h2 className="text-lg font-semibold text-ink">{title}</h2>
+      <p className="mt-1 mb-4 text-sm text-ink-muted">{description}</p>
+
+      {groups.length > 0 && (
+        <div className="mb-6 flex flex-col gap-4">
+          {groups.map((group) => (
+            <div
+              key={group.key}
+              role="group"
+              aria-label={group.heading}
+              className="rounded-md border border-line-muted p-4"
+            >
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="flex min-w-0 flex-col">
+                  <span className="text-sm font-medium break-all text-ink">{group.heading}</span>
+                  {group.subheading && (
+                    <span className="text-sm break-all text-ink-muted">{group.subheading}</span>
+                  )}
+                </div>
+                {group.rows.some((row) => row.status === 'needs_reauth') && configured && (
+                  <Link
+                    href={startHref}
+                    className="text-sm font-medium text-accent-strong hover:text-accent"
+                  >
+                    Reconnect
+                  </Link>
+                )}
+              </div>
+              <ul className="flex flex-col divide-y divide-line-muted">
+                {group.rows.map((account) => (
+                  <AccountItem key={account.id} account={account} />
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {configured ? (
+        <Link href={startHref} className={linkButton}>
+          {groups.length > 0 ? addAnotherLabel : connectLabel}
+        </Link>
+      ) : (
+        <p className="text-sm text-ink-muted">{notConfiguredNote}</p>
+      )}
+    </Card>
   );
 }
 
@@ -125,54 +215,48 @@ function GoogleCard({ accounts, configured }: { accounts: AccountRow[]; configur
   }
 
   return (
-    <Card>
-      <h2 className="text-lg font-semibold text-ink">Gmail &amp; Google Calendar</h2>
-      <p className="mt-1 mb-4 text-sm text-ink-muted">
-        Connect a Google account to give Mimus read-only access to its inbox and calendar. You can
-        connect more than one.
-      </p>
-
-      {byAddress.size > 0 && (
-        <div className="mb-6 flex flex-col gap-4">
-          {[...byAddress].map(([address, rows]) => (
-            <div
-              key={address}
-              role="group"
-              aria-label={address}
-              className="rounded-md border border-line-muted p-4"
-            >
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <span className="text-sm font-medium break-all text-ink">{address}</span>
-                {rows.some((row) => row.status === 'needs_reauth') && configured && (
-                  <Link
-                    href="/api/connectors/google/start"
-                    className="text-sm font-medium text-accent-strong hover:text-accent"
-                  >
-                    Reconnect
-                  </Link>
-                )}
-              </div>
-              <ul className="flex flex-col divide-y divide-line-muted">
-                {rows.map((account) => (
-                  <AccountItem key={account.id} account={account} />
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {configured ? (
-        <Link href="/api/connectors/google/start" className={linkButton}>
-          {byAddress.size > 0 ? 'Add another Google account' : 'Connect Google account'}
-        </Link>
-      ) : (
-        <p className="text-sm text-ink-muted">
+    <ConnectorCard
+      title="Gmail & Google Calendar"
+      description="Connect a Google account to give Mimus read-only access to its inbox and calendar. You can connect more than one."
+      groups={[...byAddress].map(([address, rows]) => ({ key: address, heading: address, rows }))}
+      startHref="/api/connectors/google/start"
+      configured={configured}
+      connectLabel="Connect Google account"
+      addAnotherLabel="Add another Google account"
+      notConfiguredNote={
+        <>
           Google connection isn&apos;t set up on this deployment yet. The operator needs to set the
           GOOGLE_OAUTH_* environment variables.
-        </p>
-      )}
-    </Card>
+        </>
+      }
+    />
+  );
+}
+
+// One Slack grant is one row, so each connected Slack workspace is its
+// own group, named after the workspace.
+function SlackCard({ accounts, configured }: { accounts: AccountRow[]; configured: boolean }) {
+  return (
+    <ConnectorCard
+      title="Slack"
+      description="Connect a Slack workspace to give Mimus read-only access to the channels you're in. No DMs. You can connect more than one."
+      groups={accounts.map((account) => ({
+        key: account.id,
+        heading: account.provider_team_name ?? 'Slack workspace',
+        subheading: account.provider_team_domain,
+        rows: [account],
+      }))}
+      startHref="/api/connectors/slack/start"
+      configured={configured}
+      connectLabel="Connect Slack workspace"
+      addAnotherLabel="Add another Slack workspace"
+      notConfiguredNote={
+        <>
+          Slack connection isn&apos;t set up on this deployment yet. The operator needs to set the
+          SLACK_* environment variables.
+        </>
+      }
+    />
   );
 }
 
