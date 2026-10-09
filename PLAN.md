@@ -1,6 +1,6 @@
 # Mimus V1 (First Stage, Web App) — Implementation Plan
 
-> **Status (2026-10-08):** Milestones 1–3 are code-complete. Milestone 4 (Mimus AI + model router) is next. See `AGENTS.md` for the practices this plan established.
+> **Status (2026-10-09):** Milestones 1–4 are code-complete. Milestone 5 (Scheduling + approvals) is next. See `AGENTS.md` for the practices this plan established.
 >
 > Code-complete here means: every task's tests pass locally and in CI, but live end-to-end testing against a real Google/Microsoft/Slack/Calendly account is still blocked on the repo owner providing those accounts' credentials (see "External accounts" below) and, for push notifications/webhooks specifically, on a deployed public URL existing at all. Nothing about that is unusual for this build — it's the same posture Milestone 1's Stripe/Resend/Vercel items shipped in, and M2/M3 just inherited it for four more providers.
 
@@ -159,7 +159,9 @@ Each AI skill declares `{ name, nature, defaultTier, defaultPriority, needs: { s
   - Calendly's "no outbound write" requirement is enforced structurally, not just by a test: `src/server/connectors/calendly/client.ts`'s content-reading function has no `method` parameter, so a write call against `scheduled_events`/`invitees` can't be constructed through that module at all. The one legitimate Calendly write (this connector's own webhook-subscription creation) lives entirely in a separate module (`webhook.ts`).
   - `connected_accounts.provider_team_id` (migration 0015) is a new generic column both connectors ended up needing — Slack's workspace and Calendly's organization are both "the provider-side tenant a notification belongs to," distinct from `external_account_id` (the person).
 
-### Milestone 4 — Mimus AI + model router
+### Milestone 4 — Mimus AI + model router ✅ code-complete
+
+> Built as PRs #48–#51. Tiers: fast/standard/deep = Haiku 5.5 / Sonnet 5.5 / Opus 5.5. Ask Mimus lives in the top-nav bar (`POST /api/agent/ask`), and sources open at `/sources/{message|event}/{id}`. Still open: a real `ANTHROPIC_API_KEY` for live testing; real `plans.ai_spend_cap_usd` numbers (the cap is monthly, UTC); bring-your-own-key (an encrypted per-workspace key) is not built yet; the server-minted JWT for background (no-session) AI runs is deferred to M6's morning brief, its first consumer.
 
 - `src/server/agent/providers/{types,anthropic}.ts`, `router/{classifier,tiers,escalate}.ts`, `modules/*`, `tools/*` (searchMessages, searchEvents, slackSearch, draftEmail, proposeMeetingTimes), `src/server/billing/spendCaps.ts`.
 - Tests first: router classification test; tool test asserting a Member's search call never returns another Member's Private-visibility data even on a crafted prompt-injection attempt (**the test must prove the database rejected the row, not that the model declined**); spend-cap tier-drop test.
@@ -196,7 +198,7 @@ Each AI skill declares `{ name, nature, defaultTier, defaultPriority, needs: { s
 | Microsoft Entra app (multi-tenant)     | M2, after Google | Pending — connector code-complete and merged, blocked on this for live testing          |
 | Slack app                              | M3 start         | Pending — connector code-complete, PRs open (#38–#41), blocked on this for live testing |
 | Calendly OAuth app                     | M3 start         | Pending — connector code-complete, PR open (#42), blocked on this for live testing      |
-| Anthropic API key                      | M4 start         | Pending                                                                                 |
+| Anthropic API key                      | M4 start         | Pending — M4 code-complete with the API mocked in tests; needed for live testing        |
 
 Ask for each at the point it's first needed — never invent a value.
 

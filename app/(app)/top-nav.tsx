@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { AvatarMenu } from './avatar-menu';
-import { SearchPlaceholder } from './search-placeholder';
+import { AskBar } from './ask-bar';
 import { ViewToggle } from './view-toggle';
 
 function Logo() {
@@ -26,8 +26,8 @@ export function TopNav({ identity }: { identity: { initials: string; email: stri
         <ViewToggle />
       </Suspense>
       <div className="flex items-center gap-3">
-        <Suspense fallback={<div className="hidden h-8 w-56 rounded-pill bg-paper sm:block" />}>
-          <SearchPlaceholder />
+        <Suspense fallback={<div className="hidden h-8 w-72 rounded-pill bg-paper sm:block" />}>
+          <AskBar />
         </Suspense>
         {identity ? (
           <AvatarMenu initials={identity.initials} email={identity.email} />
