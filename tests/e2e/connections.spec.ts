@@ -91,7 +91,7 @@ test('the Connect Google account link points at the OAuth start route when Googl
       '/api/connectors/google/start',
     );
   } else {
-    await expect(page.getByText(/isn't set up on this deployment/i)).toBeVisible();
+    await expect(page.getByText(/google connection isn't set up/i)).toBeVisible();
     await expect(page.getByRole('link', { name: /connect google account/i })).toHaveCount(0);
   }
 });
