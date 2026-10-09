@@ -2,6 +2,7 @@ import { createServiceClient } from '@/src/db/service';
 import { normalizeCalendarEvent } from '@/src/server/connectors/google/calendar';
 import { getAuthorizedClient } from '@/src/server/connectors/google/client';
 import { normalizeGmailMessage } from '@/src/server/connectors/google/gmail';
+import { withGoogleRateLimitRetry } from '@/src/server/connectors/google/retry';
 import { upsertEvent, upsertMessage } from '@/src/server/shared/normalize';
 import { google } from 'googleapis';
 
@@ -17,18 +18,22 @@ async function backfillGmail(
 
   let pageToken: string | undefined;
   do {
-    const { data } = await gmail.users.messages.list({
-      userId: 'me',
-      q: `after:${afterEpochSeconds}`,
-      pageToken,
-    });
+    const { data } = await withGoogleRateLimitRetry(() =>
+      gmail.users.messages.list({
+        userId: 'me',
+        q: `after:${afterEpochSeconds}`,
+        pageToken,
+      }),
+    );
 
     for (const ref of data.messages ?? []) {
-      const { data: full } = await gmail.users.messages.get({
-        userId: 'me',
-        id: ref.id!,
-        format: 'full',
-      });
+      const { data: full } = await withGoogleRateLimitRetry(() =>
+        gmail.users.messages.get({
+          userId: 'me',
+          id: ref.id!,
+          format: 'full',
+        }),
+      );
       await upsertMessage(workspaceId, connectedAccountId, normalizeGmailMessage(full));
     }
 

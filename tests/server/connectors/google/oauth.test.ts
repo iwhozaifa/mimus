@@ -31,7 +31,12 @@ describe('google oauth', () => {
   });
 
   it('throws a clear error (not a network call) when Google OAuth env vars are unset', async () => {
-    vi.unstubAllEnvs();
+    // Blank them explicitly rather than just unstubbing -- tests/setup.ts
+    // loads .env.local, which has real values on a dev machine that has
+    // configured Google.
+    vi.stubEnv('GOOGLE_OAUTH_CLIENT_ID', '');
+    vi.stubEnv('GOOGLE_OAUTH_CLIENT_SECRET', '');
+    vi.stubEnv('GOOGLE_OAUTH_REDIRECT_URI', '');
     await expect(getAuthUrl('x')).rejects.toThrow(/Google OAuth is not configured/);
   });
 
