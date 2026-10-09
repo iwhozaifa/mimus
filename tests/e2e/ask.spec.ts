@@ -52,10 +52,14 @@ test('asking Mimus shows the answer with sources that open the real message', as
 
   await page.goto('/sky');
   const askBox = page.getByRole('textbox', { name: 'Ask Mimus' });
-  await askBox.fill('what about the lease?');
-  await askBox.press('Enter');
-
   const answer = page.getByRole('region', { name: 'Mimus answer' });
+  // Typing before the ask bar hydrates is lost (React resets the controlled
+  // input, and Enter does a plain form submit), so retry until it takes.
+  await expect(async () => {
+    await askBox.fill('what about the lease?');
+    await askBox.press('Enter');
+    await expect(answer).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 15_000 });
   await expect(answer).toContainText('signed by Friday');
   await answer.getByRole('link', { name: /Lease renewal/ }).click();
 
