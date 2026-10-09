@@ -1,6 +1,7 @@
 import { createServiceClient } from '@/src/db/service';
 import { listVisibleSlackMessages } from '@/src/server/connectors/slack/tool';
 import { upsertMessage } from '@/src/server/shared/normalize';
+import { createClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -8,6 +9,7 @@ describe('listVisibleSlackMessages', () => {
   const supabase = createServiceClient();
   const ownerId = randomUUID();
   const outsiderId = randomUUID();
+  const password = `pw-${randomUUID()}`;
   let workspaceId: string;
   let ownerAccountId: string;
   let outsiderPrivateAccountId: string;
@@ -17,6 +19,7 @@ describe('listVisibleSlackMessages', () => {
       const { error } = await supabase.auth.admin.createUser({
         id,
         email: `${id}@example.com`,
+        password,
         email_confirm: true,
       });
       if (error) throw error;
@@ -88,13 +91,32 @@ describe('listVisibleSlackMessages', () => {
     });
   });
 
+  // Tools run under the asker's own session, never the service role.
+  async function signedIn(userId: string) {
+    const client = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } },
+    );
+    const { error } = await client.auth.signInWithPassword({
+      email: `${userId}@example.com`,
+      password,
+    });
+    if (error) throw error;
+    return client;
+  }
+
   afterAll(async () => {
     await supabase.auth.admin.deleteUser(ownerId);
     await supabase.auth.admin.deleteUser(outsiderId);
   });
 
   it("returns only the asker's own private Slack messages, never another member's", async () => {
-    const results = await listVisibleSlackMessages({ askerUserId: ownerId, workspaceId });
+    const results = await listVisibleSlackMessages({
+      supabase: await signedIn(ownerId),
+      askerUserId: ownerId,
+      workspaceId,
+    });
 
     expect(results).toHaveLength(1);
     expect(results[0].bodyText).toBe('owner can see this');
@@ -106,6 +128,7 @@ describe('listVisibleSlackMessages', () => {
     const { error } = await supabase.auth.admin.createUser({
       id: thirdPartyId,
       email: `${thirdPartyId}@example.com`,
+      password,
       email_confirm: true,
     });
     if (error) throw error;
@@ -114,9 +137,31 @@ describe('listVisibleSlackMessages', () => {
       .insert({ workspace_id: workspaceId, user_id: thirdPartyId, role: 'member' })
       .throwOnError();
 
-    const results = await listVisibleSlackMessages({ askerUserId: thirdPartyId, workspaceId });
+    const results = await listVisibleSlackMessages({
+      supabase: await signedIn(thirdPartyId),
+      askerUserId: thirdPartyId,
+      workspaceId,
+    });
     expect(results).toEqual([]);
 
     await supabase.auth.admin.deleteUser(thirdPartyId);
+  });
+
+  it('filters by keyword', async () => {
+    const supabaseAsOwner = await signedIn(ownerId);
+    const hit = await listVisibleSlackMessages({
+      supabase: supabaseAsOwner,
+      askerUserId: ownerId,
+      workspaceId,
+      query: 'owner',
+    });
+    const miss = await listVisibleSlackMessages({
+      supabase: supabaseAsOwner,
+      askerUserId: ownerId,
+      workspaceId,
+      query: 'nonexistent',
+    });
+    expect(hit).toHaveLength(1);
+    expect(miss).toEqual([]);
   });
 });
