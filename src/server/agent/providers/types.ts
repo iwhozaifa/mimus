@@ -38,6 +38,9 @@ export interface AiCompletionRequest {
   // Force the model to call this tool (e.g. the router's classify tool).
   toolChoice?: { name: string };
   maxTokens: number;
+  // Stream the answer's text as it's written. The returned completion is
+  // still the whole response.
+  onTextDelta?: (text: string) => void;
 }
 
 export interface AiCompletion {

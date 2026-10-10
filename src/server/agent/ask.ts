@@ -23,6 +23,20 @@ export interface AskResult {
   logId: string;
 }
 
+// Progress for a streaming caller: `status` starts a new step (any partial
+// text so far was a preamble or a discarded attempt), `delta` is answer text
+// as it's written. The returned AskResult is always the authoritative answer.
+export type AskEvent = { type: 'status'; text: string } | { type: 'delta'; text: string };
+type OnEvent = (event: AskEvent) => void;
+
+const TOOL_STATUS: Record<string, string> = {
+  searchMessages: 'Searching email…',
+  searchEvents: 'Checking your calendar…',
+  slackSearch: 'Searching Slack…',
+  draftEmail: 'Drafting the email…',
+  proposeMeetingTimes: 'Finding free times…',
+};
+
 const MAX_TOOL_ROUNDS = 6;
 const MAX_ANSWER_TOKENS = 2048;
 
@@ -51,6 +65,7 @@ async function attemptAnswer(
   question: string,
   tier: ModelTier,
   now: Date,
+  onEvent?: OnEvent,
 ): Promise<Attempt> {
   const messages: AiMessage[] = [{ role: 'user', content: question }];
   const completions: AiCompletion[] = [];
@@ -63,6 +78,7 @@ async function attemptAnswer(
       tools: toolDefinitions(skill.tools),
       maxTokens: MAX_ANSWER_TOKENS,
       messages,
+      ...(onEvent ? { onTextDelta: (text: string) => onEvent({ type: 'delta', text }) } : {}),
     });
     completions.push(completion);
     messages.push({ role: 'assistant', content: completion.content });
@@ -79,6 +95,7 @@ async function attemptAnswer(
 
     const results: AiUserBlock[] = [];
     for (const call of toolCalls) {
+      onEvent?.({ type: 'status', text: TOOL_STATUS[call.name] ?? 'Working…' });
       const result = await runTool(skill.tools, call.name, call.input, { ...ctx, now });
       sources.push(...result.sources);
       results.push({
@@ -111,12 +128,14 @@ export async function askMimus({
   module: requestedModule,
   provider = createOpenAiProvider(),
   now = new Date(),
+  onEvent,
 }: {
   ctx: ToolContext;
   question: string;
   module?: string;
   provider?: AiProvider;
   now?: Date;
+  onEvent?: OnEvent;
 }): Promise<AskResult> {
   const route = await routeRequest({
     provider,
@@ -172,12 +191,15 @@ export async function askMimus({
     );
   }
 
+  onEvent?.({ type: 'status', text: 'Thinking…' });
+  let attempts = 0;
   try {
     const outcome = await withEscalation({
       tier: cappedTier,
       maxTier: cappedTier === route.tier ? 'deep' : cappedTier,
       attempt: async (tier) => {
-        const attempt = await attemptAnswer(provider, ctx, skill, question, tier, now);
+        if (attempts++ > 0) onEvent?.({ type: 'status', text: 'Taking a closer look…' });
+        const attempt = await attemptAnswer(provider, ctx, skill, question, tier, now, onEvent);
         completions.push(...attempt.completions);
         return attempt;
       },

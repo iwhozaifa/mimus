@@ -215,6 +215,100 @@ describe('openai provider', () => {
     expect(result.modelId).toBe('gpt-6.1-sol');
   });
 
+  describe('streaming', () => {
+    async function* events(...items: unknown[]) {
+      yield* items;
+    }
+
+    function streamingClient(...items: unknown[]) {
+      const create = vi.fn(async () => events(...items));
+      return { create, client: { responses: { create } } as unknown as OpenAiResponsesClient };
+    }
+
+    const message = (text: string) => ({
+      type: 'message',
+      id: 'msg_1',
+      role: 'assistant',
+      status: 'completed',
+      content: [{ type: 'output_text', text, annotations: [] }],
+    });
+
+    it('forwards text deltas in order and maps the final response like a plain call', async () => {
+      const final = apiResponse({ output: [reasoning, message('Hi there')] });
+      const { create, client } = streamingClient(
+        { type: 'response.created', response: { ...final, status: 'in_progress', output: [] } },
+        { type: 'response.output_text.delta', delta: 'Hi', item_id: 'msg_1' },
+        { type: 'response.output_text.delta', delta: ' there', item_id: 'msg_1' },
+        { type: 'response.completed', response: final },
+      );
+      const deltas: string[] = [];
+
+      const result = await createOpenAiProvider({ client }).complete({
+        tier: 'fast',
+        maxTokens: 64,
+        messages: [{ role: 'user', content: 'x' }],
+        onTextDelta: (text) => deltas.push(text),
+      });
+
+      expect(deltas).toEqual(['Hi', ' there']);
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({ stream: true }));
+      const plain = await createOpenAiProvider({ client: fakeClient(final).client }).complete({
+        tier: 'fast',
+        maxTokens: 64,
+        messages: [{ role: 'user', content: 'x' }],
+      });
+      expect(result).toEqual(plain);
+    });
+
+    it('ends on an incomplete response too', async () => {
+      const { client } = streamingClient(
+        { type: 'response.output_text.delta', delta: 'Hal', item_id: 'msg_1' },
+        {
+          type: 'response.incomplete',
+          response: apiResponse({
+            status: 'incomplete',
+            incomplete_details: { reason: 'max_output_tokens' },
+            output: [message('Hal')],
+          }),
+        },
+      );
+      const result = await createOpenAiProvider({ client }).complete({
+        tier: 'fast',
+        maxTokens: 1,
+        messages: [{ role: 'user', content: 'x' }],
+        onTextDelta: () => undefined,
+      });
+      expect(result.stopReason).toBe('max_tokens');
+      expect(result.content).toEqual([{ type: 'text', text: 'Hal' }]);
+    });
+
+    it('does not stream when no one is listening for text', async () => {
+      const { create, client } = fakeClient(apiResponse());
+      await createOpenAiProvider({ client }).complete({
+        tier: 'fast',
+        maxTokens: 16,
+        messages: [{ role: 'user', content: 'x' }],
+      });
+      expect(create).toHaveBeenCalledWith(expect.not.objectContaining({ stream: true }));
+    });
+
+    it('fails if the stream ends without a final response', async () => {
+      const { client } = streamingClient({
+        type: 'response.output_text.delta',
+        delta: 'Hi',
+        item_id: 'msg_1',
+      });
+      await expect(
+        createOpenAiProvider({ client }).complete({
+          tier: 'fast',
+          maxTokens: 16,
+          messages: [{ role: 'user', content: 'x' }],
+          onTextDelta: () => undefined,
+        }),
+      ).rejects.toThrow(/without a final response/);
+    });
+  });
+
   it('fails clearly when no API key is configured', () => {
     vi.stubEnv('OPENAI_API_KEY', '');
     expect(() => createOpenAiProvider()).toThrow(/OPENAI_API_KEY/);

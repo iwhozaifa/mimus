@@ -1,10 +1,14 @@
 import { askMimus } from '@/src/server/agent/ask';
+import { askEventStream } from '@/src/server/agent/askStream';
 import { AGENT_MODULES } from '@/src/server/agent/modules';
+import { createOpenAiProvider } from '@/src/server/agent/providers/openai';
+import type { AiProvider } from '@/src/server/agent/providers/types';
 import { getCurrentWorkspaceContext } from '@/src/server/workspaces/getCurrentWorkspaceContext';
 
 // API-first so future native clients call the same endpoint the web UI
 // does. Thin by design: the logic and its tests live in
-// src/server/agent/ask.ts.
+// src/server/agent/ask.ts and askStream.ts. Errors before the answer starts
+// are JSON with a status code; after that the body is NDJSON events.
 
 export const maxDuration = 60;
 
@@ -37,22 +41,33 @@ export async function POST(request: Request) {
       ? body.module
       : undefined;
 
+  // Built before the stream opens, so a missing key is a clean 503.
+  let provider: AiProvider;
   try {
-    const result = await askMimus({
-      ctx: {
-        supabase: context.supabase,
-        userId: context.userId,
-        workspaceId: context.workspaceId,
-      },
-      question,
-      module: requestedModule,
-    });
-    return Response.json(result);
+    provider = createOpenAiProvider();
   } catch (err) {
     if (err instanceof Error && err.message.includes('OPENAI_API_KEY')) {
       return Response.json({ error: 'Mimus AI is not configured yet' }, { status: 503 });
     }
-    console.error('[agent] ask failed', err);
-    return Response.json({ error: 'Mimus could not answer right now' }, { status: 502 });
+    throw err;
   }
+
+  const stream = askEventStream(
+    (onEvent) =>
+      askMimus({
+        ctx: {
+          supabase: context.supabase,
+          userId: context.userId,
+          workspaceId: context.workspaceId,
+        },
+        question,
+        module: requestedModule,
+        provider,
+        onEvent,
+      }),
+    (err) => console.error('[agent] ask failed', err),
+  );
+  return new Response(stream, {
+    headers: { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store' },
+  });
 }
