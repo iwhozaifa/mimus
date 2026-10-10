@@ -80,10 +80,11 @@ test('asking Mimus shows the answer with sources that open the real message', as
   // The answer's markdown renders as formatting, not raw symbols, and an
   // image (which would auto-load from an untrusted URL) is never rendered.
   await expect(answer.locator('strong')).toHaveText('signed by Friday');
-  await expect(answer.getByRole('listitem')).toHaveText([
-    'Sign the renewal',
-    'Return it to the landlord',
-  ]);
+  // (The sources below the answer are a list too, so match the bullets by text.)
+  await expect(answer.getByRole('listitem').filter({ hasText: 'Sign the renewal' })).toBeVisible();
+  await expect(
+    answer.getByRole('listitem').filter({ hasText: 'Return it to the landlord' }),
+  ).toBeVisible();
   await expect(answer).not.toContainText('**');
   await expect(answer.locator('img')).toHaveCount(0);
   await answer.getByRole('link', { name: /Lease renewal/ }).click();
