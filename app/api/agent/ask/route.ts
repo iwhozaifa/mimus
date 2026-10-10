@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     });
     return Response.json(result);
   } catch (err) {
-    if (err instanceof Error && err.message.includes('ANTHROPIC_API_KEY')) {
+    if (err instanceof Error && err.message.includes('OPENAI_API_KEY')) {
       return Response.json({ error: 'Mimus AI is not configured yet' }, { status: 503 });
     }
     console.error('[agent] ask failed', err);

@@ -1,6 +1,6 @@
 import { logAgentRequest } from '@/src/server/agent/logAgentRequest';
 import { AGENT_MODULES, type AgentModule } from '@/src/server/agent/modules';
-import { createAnthropicProvider } from '@/src/server/agent/providers/anthropic';
+import { createOpenAiProvider } from '@/src/server/agent/providers/openai';
 import type {
   AiCompletion,
   AiMessage,
@@ -109,7 +109,7 @@ export async function askMimus({
   ctx,
   question,
   module: requestedModule,
-  provider = createAnthropicProvider(),
+  provider = createOpenAiProvider(),
   now = new Date(),
 }: {
   ctx: ToolContext;

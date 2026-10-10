@@ -11,7 +11,7 @@ import { upsertMessage } from '@/src/server/shared/normalize';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAgentFixture, type AgentFixture } from './fixtures';
 
-// The Anthropic API is the one mocked boundary: a scripted provider that
+// The OpenAI API is the one mocked boundary: a scripted provider that
 // classifies, then calls whatever tool the test wants, then answers.
 type Step = (request: AiCompletionRequest) => Partial<AiCompletion>;
 
@@ -192,7 +192,7 @@ describe('askMimus: Who -> Router -> Tools -> Answer', () => {
   it('logs a failed request as an error and rethrows', async () => {
     const provider: AiProvider = {
       complete: vi.fn(async (request: AiCompletionRequest) => {
-        if (request.toolChoice) throw new Error('Anthropic is down');
+        if (request.toolChoice) throw new Error('OpenAI is down');
         throw new Error('unreachable');
       }),
     };
