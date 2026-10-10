@@ -2,7 +2,7 @@
 
 > **Status (2026-10-09):** Milestones 1–4 are merged to `main` (PRs #1–#51). Milestone 5 (Scheduling + approvals) is next. See `AGENTS.md` for the practices this plan established, and "Work outside the milestone plan" below for the front end, performance and Gmail-quota work done between milestones.
 >
-> Code-complete here means: every task's tests pass locally and in CI. Live end-to-end testing has been done for the **Google connector only** (a real Gmail + Calendar account connected and backfilled locally, 2026-10-09). Microsoft, Slack, Calendly and the Anthropic API are still waiting on the repo owner's credentials (see "External accounts" below), and push notifications/webhooks on every provider are waiting on a deployed public URL.
+> Code-complete here means: every task's tests pass locally and in CI. Live end-to-end testing has been done for the **Google connector only** (a real Gmail + Calendar account connected and backfilled locally, 2026-10-09). Microsoft, Slack, Calendly and the OpenAI API are still waiting on the repo owner's credentials (see "External accounts" below), and push notifications/webhooks on every provider are waiting on a deployed public URL.
 
 ## Context
 
@@ -16,7 +16,7 @@ The working directory (`/home/whusan/aliyan`) is currently empty and not a git r
 
 ## Confirmed decisions
 
-- **Stack:** Next.js + TypeScript, Supabase (Postgres + RLS + Auth), Stripe Billing, Claude API (Anthropic) behind a swappable provider interface.
+- **Stack:** Next.js + TypeScript, Supabase (Postgres + RLS + Auth), Stripe Billing, OpenAI Responses API behind a swappable provider interface (originally Claude/Anthropic; swapped to OpenAI 2026-10-11).
 - **Background jobs:** Supabase Edge Functions + pg_cron.
 - **Shared layer for future macOS/iOS:** API-first backend, thin future clients. All business logic/permissions/data models live server-side. No monorepo — single Next.js repo with internal module boundaries.
 - **"Team" = Workspace.** No separate Team entity for membership purposes.
@@ -106,7 +106,7 @@ Each provider implements this in its own module. Normalization into `message`/`p
 
 ### Agent module spec (`src/server/agent/modules/types.ts`)
 
-Each AI skill declares `{ name, nature, defaultTier, defaultPriority, needs: { sources, crossSource? }, permissions: { requiresApproval? }, tools: string[], run() }`. The model router consumes `defaultTier`/`defaultPriority` as rule-based Step 1; a classifier implements Step 2 (fast-tier classification of free text, escalating a tier on low confidence); an escalation module implements Step 3 (retry one tier up, once, on failed output checks). The tool-calling layer only exposes the tools named in the active module's `tools[]` to the model — each tool independently re-checks permissions and runs under the user-scoped client, so the module spec narrows what's _offered_, RLS still enforces what's _returned_. The AI provider is abstracted (`AiProvider.complete()`) with `providers/anthropic.ts` as the only implementation today.
+Each AI skill declares `{ name, nature, defaultTier, defaultPriority, needs: { sources, crossSource? }, permissions: { requiresApproval? }, tools: string[], run() }`. The model router consumes `defaultTier`/`defaultPriority` as rule-based Step 1; a classifier implements Step 2 (fast-tier classification of free text, escalating a tier on low confidence); an escalation module implements Step 3 (retry one tier up, once, on failed output checks). The tool-calling layer only exposes the tools named in the active module's `tools[]` to the model — each tool independently re-checks permissions and runs under the user-scoped client, so the module spec narrows what's _offered_, RLS still enforces what's _returned_. The AI provider is abstracted (`AiProvider.complete()`) with `providers/openai.ts` as the only implementation today.
 
 ### Widget manifest (`src/server/widgets/types.ts`)
 
@@ -174,19 +174,21 @@ Each AI skill declares `{ name, nature, defaultTier, defaultPriority, needs: { s
 | #50 | The five tools, each running under the asker's own session; the adversarial test proving the database, not the model, blocks another Member's Private data                                                                              |
 | #51 | `askMimus()` (Who → Router → Tools → Answer, logged to `agent_logs` + spend counters), `POST /api/agent/ask`, the top-nav Ask bar, `/sources/{message\|event}/{id}`                                                                     |
 
+**Provider swap (2026-10-11):** the Anthropic provider was replaced by `providers/openai.ts` (Responses API, stateless with `store: false`; reasoning items are carried through the history as `opaque` blocks). Tiers are now fast/standard/deep = `gpt-6-luna` / `gpt-6.1-sol` / `gpt-5.6-sol`, priced from OpenAI's published rates including the over-272k-input long-context rate. The router, escalation, tools, spend caps and `askMimus()` were unchanged.
+
 Still open:
 
-- A real `ANTHROPIC_API_KEY` for live testing (the API is mocked in every test).
+- Live testing with the repo owner's `OPENAI_API_KEY` (the API is mocked in every test).
 - Real `plans.ai_spend_cap_usd` numbers (the cap is per calendar month, UTC).
 - Bring-your-own-key (an encrypted per-workspace key).
 - The server-minted JWT for background (no-session) AI runs, deferred to M6's morning brief, its first consumer.
 
 Plan of record:
 
-- `src/server/agent/providers/{types,anthropic}.ts`, `router/{classifier,tiers,escalate}.ts`, `modules/*`, `tools/*` (searchMessages, searchEvents, slackSearch, draftEmail, proposeMeetingTimes), `src/server/billing/spendCaps.ts`.
+- `src/server/agent/providers/{types,openai}.ts`, `router/{classifier,tiers,escalate}.ts`, `modules/*`, `tools/*` (searchMessages, searchEvents, slackSearch, draftEmail, proposeMeetingTimes), `src/server/billing/spendCaps.ts`.
 - Tests first: router classification test; tool test asserting a Member's search call never returns another Member's Private-visibility data even on a crafted prompt-injection attempt (**the test must prove the database rejected the row, not that the model declined**); spend-cap tier-drop test.
 - DoD: a free-text question resolves via Who→Router→Tools→Answer with tappable sources, logged to `agent_logs`.
-- **External account needed:** Anthropic API key (managed by default; bring-your-own-key stores an encrypted key per workspace).
+- **External account needed:** OpenAI API key (managed by default; bring-your-own-key stores an encrypted key per workspace).
 
 ### Work outside the milestone plan
 
@@ -232,7 +234,7 @@ Known open issues:
 | Microsoft Entra app (multi-tenant)     | M2, after Google | Pending — connector code-complete and merged, blocked on this for live testing    |
 | Slack app                              | M3 start         | Pending — connector merged, blocked on this for live testing                      |
 | Calendly OAuth app                     | M3 start         | Pending — connector merged, blocked on this for live testing                      |
-| Anthropic API key                      | M4 start         | Pending — M4 merged with the API mocked in tests; needed for live testing         |
+| OpenAI API key                         | M4 start         | Provided by the repo owner (2026-10-11); set `OPENAI_API_KEY` for live testing    |
 
 Ask for each at the point it's first needed — never invent a value.
 
