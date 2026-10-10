@@ -14,6 +14,9 @@ export interface OpenAiResponsesClient {
     create(
       params: OpenAI.Responses.ResponseCreateParamsNonStreaming,
     ): Promise<OpenAI.Responses.Response>;
+    create(
+      params: OpenAI.Responses.ResponseCreateParamsStreaming,
+    ): Promise<AsyncIterable<OpenAI.Responses.ResponseStreamEvent>>;
   };
 }
 
@@ -93,13 +96,44 @@ function baseModelId(model: string): string {
   return model.replace(/-\d{4}-\d{2}-\d{2}$/, '');
 }
 
+function toCompletion(response: OpenAI.Responses.Response): AiCompletion {
+  const content = fromApiOutput(response.output);
+  return {
+    modelId: baseModelId(response.model),
+    stopReason: fromApiStatus(response, content),
+    content,
+    usage: {
+      inputTokens: response.usage?.input_tokens ?? 0,
+      outputTokens: response.usage?.output_tokens ?? 0,
+    },
+  };
+}
+
+// Forwards text deltas as they arrive; the stream's terminal event carries
+// the same whole response a plain call returns.
+async function readStream(
+  events: AsyncIterable<OpenAI.Responses.ResponseStreamEvent>,
+  onTextDelta: (text: string) => void,
+): Promise<OpenAI.Responses.Response> {
+  for await (const event of events) {
+    if (event.type === 'response.output_text.delta') onTextDelta(event.delta);
+    else if (
+      event.type === 'response.completed' ||
+      event.type === 'response.incomplete' ||
+      event.type === 'response.failed'
+    )
+      return event.response;
+  }
+  throw new Error('OpenAI stream ended without a final response');
+}
+
 export function createOpenAiProvider({
   client,
 }: { client?: OpenAiResponsesClient } = {}): AiProvider {
   const api = client ?? defaultClient();
   return {
     async complete(request: AiCompletionRequest): Promise<AiCompletion> {
-      const response = await api.responses.create({
+      const params: Omit<OpenAI.Responses.ResponseCreateParamsNonStreaming, 'stream'> = {
         model: modelForTier(request.tier),
         max_output_tokens: request.maxTokens,
         store: false,
@@ -122,17 +156,14 @@ export function createOpenAiProvider({
           ? { tool_choice: { type: 'function' as const, name: request.toolChoice.name } }
           : {}),
         input: request.messages.flatMap(toApiInput),
-      });
-      const content = fromApiOutput(response.output);
-      return {
-        modelId: baseModelId(response.model),
-        stopReason: fromApiStatus(response, content),
-        content,
-        usage: {
-          inputTokens: response.usage?.input_tokens ?? 0,
-          outputTokens: response.usage?.output_tokens ?? 0,
-        },
       };
+      const response = request.onTextDelta
+        ? await readStream(
+            await api.responses.create({ ...params, stream: true as const }),
+            request.onTextDelta,
+          )
+        : await api.responses.create(params);
+      return toCompletion(response);
     },
   };
 }

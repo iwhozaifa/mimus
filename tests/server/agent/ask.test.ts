@@ -1,5 +1,5 @@
 import { createServiceClient } from '@/src/db/service';
-import { askMimus } from '@/src/server/agent/ask';
+import { askMimus, type AskEvent } from '@/src/server/agent/ask';
 import type {
   AiCompletion,
   AiCompletionRequest,
@@ -19,7 +19,8 @@ function scriptedProvider(classify: Record<string, unknown>, steps: Step[]) {
   const calls: AiCompletionRequest[] = [];
   let step = 0;
   const complete = vi.fn(async (request: AiCompletionRequest): Promise<AiCompletion> => {
-    calls.push(structuredClone(request));
+    const { onTextDelta, ...cloneable } = request;
+    calls.push({ ...structuredClone(cloneable), onTextDelta });
     const base = {
       modelId: request.tier === 'fast' ? 'gpt-6-luna' : 'gpt-6.1-sol',
       usage: { inputTokens: 1000, outputTokens: 100 },
@@ -44,9 +45,14 @@ const callTool =
     stopReason: 'tool_use',
     content: [{ type: 'tool_use', id: `tu_${name}`, name, input }],
   });
+// Streams the answer word by word when the caller listens for text, like
+// the real provider does.
 const answer =
   (text: string): Step =>
-  () => ({ content: [{ type: 'text', text }] });
+  (request) => {
+    for (const word of text.match(/\S+\s*/g) ?? []) request.onTextDelta?.(word);
+    return { content: [{ type: 'text', text }] };
+  };
 
 describe('askMimus: Who -> Router -> Tools -> Answer', () => {
   const service = createServiceClient();
@@ -173,6 +179,45 @@ describe('askMimus: Who -> Router -> Tools -> Answer', () => {
 
     expect(calls.slice(1).map((call) => call.tier)).toEqual(['fast', 'standard']);
     expect(result).toMatchObject({ tier: 'standard', answer: 'Here is a real answer.' });
+  });
+
+  it('reports progress as it goes: routing, each tool, then the streamed answer', async () => {
+    const { provider } = scriptedProvider({ module: 'lookup', tier: 'fast', confidence: 0.9 }, [
+      callTool('searchMessages', { query: 'lease' }),
+      answer('Sign by Friday.'),
+    ]);
+    const events: AskEvent[] = [];
+
+    await askMimus({
+      ctx: alice,
+      question: 'what about the lease?',
+      provider,
+      onEvent: (event) => events.push(event),
+    });
+
+    expect(events).toEqual([
+      { type: 'status', text: 'Thinking…' },
+      { type: 'status', text: 'Searching email…' },
+      { type: 'delta', text: 'Sign ' },
+      { type: 'delta', text: 'by ' },
+      { type: 'delta', text: 'Friday.' },
+    ]);
+  });
+
+  it('says it is taking a closer look when the answer escalates', async () => {
+    const { provider } = scriptedProvider({ module: 'lookup', tier: 'fast', confidence: 0.9 }, [
+      answer(''),
+      answer('Better.'),
+    ]);
+    const events: AskEvent[] = [];
+
+    await askMimus({ ctx: alice, question: 'anything?', provider, onEvent: (e) => events.push(e) });
+
+    expect(events).toEqual([
+      { type: 'status', text: 'Thinking…' },
+      { type: 'status', text: 'Taking a closer look…' },
+      { type: 'delta', text: 'Better.' },
+    ]);
   });
 
   it('skips the classifier when the caller names the module', async () => {

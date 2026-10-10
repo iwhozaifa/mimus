@@ -4,6 +4,7 @@ import { Loader2, Search, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
+import { AnswerMarkdown } from './answer-markdown';
 import { searchPlaceholderFor } from './view-toggle';
 
 interface Source {
@@ -14,9 +15,15 @@ interface Source {
   provider: string;
 }
 
+type StreamEvent =
+  | { type: 'status'; text: string }
+  | { type: 'delta'; text: string }
+  | { type: 'done'; result: { answer: string; sources: Source[] } }
+  | { type: 'error'; error: string };
+
 type State =
   | { phase: 'idle' }
-  | { phase: 'asking'; question: string }
+  | { phase: 'asking'; question: string; status: string; partial: string }
   | { phase: 'answered'; question: string; answer: string; sources: Source[] }
   | { phase: 'failed'; question: string; error: string };
 
@@ -24,6 +31,31 @@ function formatTimestamp(timestamp: string | null): string {
   return timestamp
     ? new Date(timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
     : '';
+}
+
+// Reads the route's NDJSON body, one event per line. Returns whether the
+// stream reached a final `done` or `error` event.
+async function readEvents(
+  body: ReadableStream<Uint8Array>,
+  onEvent: (event: StreamEvent) => void,
+): Promise<boolean> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let finished = false;
+  for (;;) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const lines = buffer.split('\n');
+    buffer = done ? '' : lines.pop()!;
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const event = JSON.parse(line) as StreamEvent;
+      if (event.type === 'done' || event.type === 'error') finished = true;
+      onEvent(event);
+    }
+    if (done) return finished;
+  }
 }
 
 export function AskBar() {
@@ -35,19 +67,42 @@ export function AskBar() {
     event.preventDefault();
     const asked = question.trim();
     if (!asked || state.phase === 'asking') return;
-    setState({ phase: 'asking', question: asked });
+    setState({ phase: 'asking', question: asked, status: 'Thinking…', partial: '' });
     try {
       const response = await fetch('/api/agent/ask', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ question: asked }),
       });
-      const body = await response.json();
-      setState(
-        response.ok
-          ? { phase: 'answered', question: asked, answer: body.answer, sources: body.sources }
-          : { phase: 'failed', question: asked, error: body.error ?? 'Something went wrong' },
-      );
+      if (!response.ok || !response.body) {
+        const body = await response.json().catch(() => ({}));
+        setState({ phase: 'failed', question: asked, error: body.error ?? 'Something went wrong' });
+        return;
+      }
+      const finished = await readEvents(response.body, (event) => {
+        if (event.type === 'status') {
+          // A new step: any text so far was a preamble or a discarded attempt.
+          setState({ phase: 'asking', question: asked, status: event.text, partial: '' });
+        } else if (event.type === 'delta') {
+          setState((current) =>
+            current.phase === 'asking'
+              ? { ...current, partial: current.partial + event.text }
+              : current,
+          );
+        } else if (event.type === 'done') {
+          setState({
+            phase: 'answered',
+            question: asked,
+            answer: event.result.answer,
+            sources: event.result.sources,
+          });
+        } else {
+          setState({ phase: 'failed', question: asked, error: event.error });
+        }
+      });
+      if (!finished) {
+        setState({ phase: 'failed', question: asked, error: 'Mimus could not answer right now' });
+      }
     } catch {
       setState({ phase: 'failed', question: asked, error: 'Network error' });
     }
@@ -86,14 +141,21 @@ export function AskBar() {
           </div>
 
           {state.phase === 'asking' && (
-            <p className="flex items-center gap-2 text-sm text-ink-muted">
-              <Loader2 className="size-4 animate-spin" /> Thinking…
-            </p>
+            <>
+              <p className="flex items-center gap-2 text-sm text-ink-muted">
+                <Loader2 className="size-4 animate-spin" /> {state.status}
+              </p>
+              {state.partial && (
+                <div className="mt-2">
+                  <AnswerMarkdown text={state.partial} />
+                </div>
+              )}
+            </>
           )}
           {state.phase === 'failed' && <p className="text-sm text-danger">{state.error}</p>}
           {state.phase === 'answered' && (
             <>
-              <p className="text-sm whitespace-pre-wrap text-ink">{state.answer}</p>
+              <AnswerMarkdown text={state.answer} />
               {state.sources.length > 0 && (
                 <div className="mt-4 border-t border-line-muted pt-3">
                   <p className="mb-2 text-xs font-medium tracking-wide text-ink-muted uppercase">
