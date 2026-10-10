@@ -1,5 +1,5 @@
-// The provider-neutral shape the agent layer talks to. Anthropic is the only
-// implementation today (providers/anthropic.ts); a second provider means a
+// The provider-neutral shape the agent layer talks to. OpenAI is the only
+// implementation today (providers/openai.ts); a second provider means a
 // second file implementing AiProvider, nothing upstream changes.
 
 export type ModelTier = 'fast' | 'standard' | 'deep';
@@ -10,8 +10,12 @@ export interface AiToolDefinition {
   inputSchema: Record<string, unknown>;
 }
 
+// `opaque` carries a provider-private item (e.g. an OpenAI reasoning item)
+// that must be sent back unchanged on the next turn; nothing else reads it.
 export type AiAssistantBlock =
-  { type: 'text'; text: string } | { type: 'tool_use'; id: string; name: string; input: unknown };
+  | { type: 'text'; text: string }
+  | { type: 'tool_use'; id: string; name: string; input: unknown }
+  | { type: 'opaque'; item: unknown };
 
 export type AiUserBlock =
   | { type: 'text'; text: string }

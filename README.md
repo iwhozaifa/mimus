@@ -11,7 +11,7 @@ This is **V1, first stage: web app only**. See [`PLAN.md`](./PLAN.md) for the fu
 - **Database/Auth:** Supabase (Postgres, Row-Level Security, magic-link Auth) — the permission boundary lives in RLS policies, not application code
 - **Billing:** Stripe (checkout + webhooks)
 - **Email:** Resend
-- **AI:** Claude API (Anthropic, `@anthropic-ai/sdk`) behind a swappable `AiProvider` interface — Haiku 5.5 / Sonnet 5.5 / Opus 5.5 tiers
+- **AI:** OpenAI Responses API (`openai`) behind a swappable `AiProvider` interface — GPT-6 Luna / GPT-6.1 Sol / GPT-5.6 Sol tiers
 - **Testing:** Vitest (unit/integration), pgTAP (RLS/SQL), Playwright (e2e)
 - **Tooling:** ESLint, Prettier, Husky + lint-staged + commitlint
 - **CI/Hosting:** GitHub Actions (required on every PR) · Supabase Cloud · Vercel (not yet connected)
@@ -65,7 +65,7 @@ Copy `.env.example` to `.env.local` and fill these in — all are server-only ex
 | `TOKEN_ENCRYPTION_KEY`                 | Encrypting connector OAuth tokens at rest         | Generate your own: `openssl rand -base64 32` -- not a third-party credential                                                               |
 | `TOKEN_ENCRYPTION_KEY_VERSION`         | Optional, defaults to `1`                         | Only set when rotating to a new `TOKEN_ENCRYPTION_KEY_V{n}` (see below)                                                                    |
 | `GMAIL_BACKFILL_UNITS_PER_MINUTE`      | Optional, defaults to `3000`                      | Gmail quota units per minute the backfill may spend (see "Google connector")                                                               |
-| `ANTHROPIC_API_KEY`                    | Ask Mimus (the AI)                                | [platform.claude.com](https://platform.claude.com) -> API keys                                                                             |
+| `OPENAI_API_KEY`                       | Ask Mimus (the AI)                                | [platform.openai.com](https://platform.openai.com) -> API keys                                                                             |
 
 **Use `http://127.0.0.1:3000`, not `localhost`, for local development** — both in the browser and in every OAuth redirect URI you register. Cookies are bound to the exact host, so starting a connect flow on `localhost` and returning to `127.0.0.1` (or the reverse) loses the session and fails with `?error=google_invalid_state`. **`TOKEN_ENCRYPTION_KEY` is required before connecting any provider**; without it the callback fails with `?error=google_connect_failed` (or the equivalent for that provider).
 
@@ -132,12 +132,12 @@ Real-time updates (`src/server/connectors/calendly/webhook.ts`, `POST /api/webho
 Type a question into the search box in the top nav. It goes to `POST /api/agent/ask` (the same endpoint future native apps will use), which runs `askMimus()` in `src/server/agent/ask.ts`:
 
 1. **Who:** the asker's own Supabase session. Every tool queries with it, never the service role, so RLS decides what the AI can see. A test in `tests/server/agent/tools/tools.test.ts` points the AI at another Member's Private account with prompt-injection text and proves the database returns nothing.
-2. **Router** (`src/server/agent/router/`): picks one of four skill modules (`src/server/agent/modules/`): `lookup`, `briefing`, `draft` or `schedule`. It uses a quick classification on the fast tier (Haiku 5.5), then the module's default tier (fast = Haiku 5.5, standard = Sonnet 5.5, deep = Opus 5.5). Low classifier confidence bumps the tier up one.
+2. **Router** (`src/server/agent/router/`): picks one of four skill modules (`src/server/agent/modules/`): `lookup`, `briefing`, `draft` or `schedule`. It uses a quick classification on the fast tier (GPT-6 Luna), then the module's default tier (fast = GPT-6 Luna, standard = GPT-6.1 Sol, deep = GPT-5.6 Sol). Low classifier confidence bumps the tier up one.
 3. **Spend cap** (`src/server/billing/spendCaps.ts`): spend is summed per calendar month (UTC) against the workspace plan's `ai_spend_cap_usd`. At 80% of the cap answers drop one tier; at 100% they're blocked. No cap set means no limit.
 4. **Tools** (`src/server/agent/tools/`): `searchMessages`, `searchEvents`, `slackSearch`, `draftEmail` (drafts only, never sends) and `proposeMeetingTimes` (the asker's own calendars, weekdays 9–5). The model is offered, and can run, only the tools its module lists.
 5. **Answer:** if an answer comes back empty or unfinished, it retries once, one tier up. Sources are returned with the answer; clicking one opens `/sources/message/<id>` or `/sources/event/<id>`, read under the viewer's own session, so anything they can't see is "not found".
 
-Every request is logged to `agent_logs` (tokens and cost across all model calls, source ids, status) and added to `agent_spend_counters`. Without `ANTHROPIC_API_KEY` the Ask bar shows "Mimus AI is not configured yet"; every test mocks the API, so none of them needs a key.
+Every request is logged to `agent_logs` (tokens and cost across all model calls, source ids, status) and added to `agent_spend_counters`. Without `OPENAI_API_KEY` the Ask bar shows "Mimus AI is not configured yet"; every test mocks the API, so none of them needs a key.
 
 ### Push notifications and renewal (code-complete, not live yet)
 
@@ -171,7 +171,7 @@ For a real deployment, Supabase Cloud's default mailer is also rate-limited and 
 
 Code-complete work the repo owner still needs to act on — nothing here blocks further development, but each is needed before the corresponding feature can be used end-to-end:
 
-1. **Anthropic API key**, for live testing of Ask Mimus — set `ANTHROPIC_API_KEY` in `.env.local`.
+1. **OpenAI API key**, for live testing of Ask Mimus — set `OPENAI_API_KEY` in `.env.local`.
 2. **AI spend-cap amounts** — set real `plans.ai_spend_cap_usd` values per plan (USD per calendar month). The enforcement is built; the numbers are still placeholders.
 3. ✅ **Google Cloud OAuth client** — done for local development (live-tested 2026-10-09: Gmail + Calendar connected and backfilled). For a new environment: [console.cloud.google.com](https://console.cloud.google.com) → APIs & Services → Credentials → OAuth client ID ("Web application"). Provide `GOOGLE_OAUTH_CLIENT_ID`/`GOOGLE_OAUTH_CLIENT_SECRET` and register redirect URI `http://127.0.0.1:3000/api/connectors/google/callback` (or your deployed equivalent).
 4. **Microsoft Entra app registration**, for live testing of the Microsoft connector — [entra.microsoft.com](https://entra.microsoft.com) → App registrations → New registration → multi-tenant ("Accounts in any organizational directory and personal Microsoft accounts"). Provide `MICROSOFT_OAUTH_CLIENT_ID`/`MICROSOFT_OAUTH_CLIENT_SECRET` and register redirect URI `http://127.0.0.1:3000/api/connectors/microsoft/callback`.

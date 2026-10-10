@@ -11,7 +11,7 @@ import { upsertMessage } from '@/src/server/shared/normalize';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAgentFixture, type AgentFixture } from './fixtures';
 
-// The Anthropic API is the one mocked boundary: a scripted provider that
+// The OpenAI API is the one mocked boundary: a scripted provider that
 // classifies, then calls whatever tool the test wants, then answers.
 type Step = (request: AiCompletionRequest) => Partial<AiCompletion>;
 
@@ -21,7 +21,7 @@ function scriptedProvider(classify: Record<string, unknown>, steps: Step[]) {
   const complete = vi.fn(async (request: AiCompletionRequest): Promise<AiCompletion> => {
     calls.push(structuredClone(request));
     const base = {
-      modelId: request.tier === 'fast' ? 'claude-haiku-5-5' : 'claude-sonnet-5-5',
+      modelId: request.tier === 'fast' ? 'gpt-6-luna' : 'gpt-6.1-sol',
       usage: { inputTokens: 1000, outputTokens: 100 },
       stopReason: 'end_turn' as const,
       content: [],
@@ -112,14 +112,14 @@ describe('askMimus: Who -> Router -> Tools -> Answer', () => {
     ]);
 
     const row = await logRow(result.logId);
-    // classify + tool call + answer, 1000 in / 100 out each, all on Haiku.
+    // classify + tool call + answer, 1000 in / 100 out each, all on GPT-6 Luna.
     expect(row).toMatchObject({
       workspace_id: fx.workspaceId,
       user_id: fx.alice.id,
       nature: 'lookup',
       priority: 'interactive',
       model_tier: 'fast',
-      model_id: 'claude-haiku-5-5',
+      model_id: 'gpt-6-luna',
       input_tokens: 3000,
       output_tokens: 300,
       status: 'ok',
@@ -192,7 +192,7 @@ describe('askMimus: Who -> Router -> Tools -> Answer', () => {
   it('logs a failed request as an error and rethrows', async () => {
     const provider: AiProvider = {
       complete: vi.fn(async (request: AiCompletionRequest) => {
-        if (request.toolChoice) throw new Error('Anthropic is down');
+        if (request.toolChoice) throw new Error('OpenAI is down');
         throw new Error('unreachable');
       }),
     };

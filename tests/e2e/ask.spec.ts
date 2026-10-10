@@ -26,7 +26,7 @@ test('asking Mimus shows the answer with sources that open the real message', as
   await signInViaMagicLink(page, email);
   const messageId = await seedMessage(email, 'Lease renewal');
 
-  // The model call is the one stubbed boundary (no Anthropic key in CI);
+  // The model call is the one stubbed boundary (no OpenAI key in CI);
   // askMimus itself is covered against the real DB in vitest.
   await page.route('**/api/agent/ask', async (route) => {
     expect(route.request().postDataJSON()).toEqual({ question: 'what about the lease?' });

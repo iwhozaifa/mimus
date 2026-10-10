@@ -3,25 +3,33 @@ import type { AiUsage, ModelTier } from '@/src/server/agent/providers/types';
 const TIER_ORDER: ModelTier[] = ['fast', 'standard', 'deep'];
 
 const TIER_MODELS: Record<ModelTier, string> = {
-  fast: 'claude-haiku-5-5',
-  standard: 'claude-sonnet-5-5',
-  deep: 'claude-opus-5-5',
+  fast: 'gpt-6-luna',
+  standard: 'gpt-6.1-sol',
+  deep: 'gpt-5.6-sol',
 };
 
-// USD per million tokens, from platform.claude.com/docs/en/about-claude/pricing
-// (checked 2026-10-09). Haiku 5.5 is priced by prompt length: a request whose
-// input is over 100k tokens pays the `long` rate for the whole request.
+// USD per million tokens, from developers.openai.com/api/docs/pricing
+// (checked 2026-10-11). A request whose input is over 272k tokens pays the
+// `long` rate for the whole request. GPT-5.6 Sol's rate is promotional "at
+// least through November 21, 2026" -- re-check it after that date.
 interface Rate {
   input: number;
   output: number;
 }
+const LONG_CONTEXT_TOKENS = 272_000;
 const MODEL_PRICING: Record<string, { base: Rate; long?: { overInputTokens: number } & Rate }> = {
-  'claude-haiku-5-5': {
+  'gpt-6-luna': {
     base: { input: 0.1, output: 0.5 },
-    long: { overInputTokens: 100_000, input: 0.5, output: 2.5 },
+    long: { overInputTokens: LONG_CONTEXT_TOKENS, input: 0.2, output: 0.75 },
   },
-  'claude-sonnet-5-5': { base: { input: 2, output: 10 } },
-  'claude-opus-5-5': { base: { input: 4, output: 20 } },
+  'gpt-6.1-sol': {
+    base: { input: 2, output: 10 },
+    long: { overInputTokens: LONG_CONTEXT_TOKENS, input: 4, output: 15 },
+  },
+  'gpt-5.6-sol': {
+    base: { input: 4, output: 20 },
+    long: { overInputTokens: LONG_CONTEXT_TOKENS, input: 8, output: 30 },
+  },
 };
 
 export function modelForTier(tier: ModelTier): string {
