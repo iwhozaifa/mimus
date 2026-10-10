@@ -20,7 +20,7 @@ const candidates: RouteCandidate[] = [
 // Fake provider that answers the classify tool call with the given input.
 function classifierReturning(input: unknown) {
   const complete = vi.fn<AiProvider['complete']>(async () => ({
-    modelId: 'claude-haiku-5-5',
+    modelId: 'gpt-6-luna',
     stopReason: 'tool_use',
     content: [{ type: 'tool_use', id: 'tu_1', name: 'classify', input }],
     usage: { inputTokens: 50, outputTokens: 10 },
@@ -61,7 +61,7 @@ describe('routeRequest', () => {
       escalatedForLowConfidence: false,
     });
     expect(decision.classification).toEqual({
-      modelId: 'claude-haiku-5-5',
+      modelId: 'gpt-6-luna',
       usage: { inputTokens: 50, outputTokens: 10 },
     });
   });

@@ -21,7 +21,7 @@ function scriptedProvider(classify: Record<string, unknown>, steps: Step[]) {
   const complete = vi.fn(async (request: AiCompletionRequest): Promise<AiCompletion> => {
     calls.push(structuredClone(request));
     const base = {
-      modelId: request.tier === 'fast' ? 'claude-haiku-5-5' : 'claude-sonnet-5-5',
+      modelId: request.tier === 'fast' ? 'gpt-6-luna' : 'gpt-6.1-sol',
       usage: { inputTokens: 1000, outputTokens: 100 },
       stopReason: 'end_turn' as const,
       content: [],
@@ -112,14 +112,14 @@ describe('askMimus: Who -> Router -> Tools -> Answer', () => {
     ]);
 
     const row = await logRow(result.logId);
-    // classify + tool call + answer, 1000 in / 100 out each, all on Haiku.
+    // classify + tool call + answer, 1000 in / 100 out each, all on GPT-6 Luna.
     expect(row).toMatchObject({
       workspace_id: fx.workspaceId,
       user_id: fx.alice.id,
       nature: 'lookup',
       priority: 'interactive',
       model_tier: 'fast',
-      model_id: 'claude-haiku-5-5',
+      model_id: 'gpt-6-luna',
       input_tokens: 3000,
       output_tokens: 300,
       status: 'ok',

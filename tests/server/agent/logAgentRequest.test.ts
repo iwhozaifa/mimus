@@ -29,7 +29,7 @@ describe('logAgentRequest', () => {
       nature: 'lookup',
       priority: 'interactive',
       modelTier: 'fast',
-      modelId: 'claude-haiku-4-5',
+      modelId: 'gpt-6-luna',
       inputTokens: 12,
       outputTokens: 34,
       costUsd: 0.002,
