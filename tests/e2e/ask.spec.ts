@@ -28,25 +28,42 @@ test('asking Mimus shows the answer with sources that open the real message', as
 
   // The model call is the one stubbed boundary (no OpenAI key in CI);
   // askMimus itself is covered against the real DB in vitest.
+  const answerText = [
+    'Your landlord wants the lease renewal **signed by Friday**.',
+    '',
+    '- Sign the renewal',
+    '- Return it to the landlord',
+    '',
+    '![x](https://evil.example/x.png)',
+  ].join('\n');
   await page.route('**/api/agent/ask', async (route) => {
     expect(route.request().postDataJSON()).toEqual({ question: 'what about the lease?' });
-    await route.fulfill({
-      json: {
-        status: 'ok',
-        answer: 'Your landlord wants the lease renewal signed by Friday.',
-        module: 'lookup',
-        tier: 'fast',
-        logId: 'x',
-        sources: [
-          {
-            kind: 'message',
-            id: messageId,
-            title: 'Lease renewal',
-            timestamp: new Date().toISOString(),
-            provider: 'google',
-          },
-        ],
+    const events = [
+      { type: 'status', text: 'Searching email…' },
+      { type: 'delta', text: 'Your landlord wants ' },
+      {
+        type: 'done',
+        result: {
+          status: 'ok',
+          answer: answerText,
+          module: 'lookup',
+          tier: 'fast',
+          logId: 'x',
+          sources: [
+            {
+              kind: 'message',
+              id: messageId,
+              title: 'Lease renewal',
+              timestamp: new Date().toISOString(),
+              provider: 'google',
+            },
+          ],
+        },
       },
+    ];
+    await route.fulfill({
+      contentType: 'application/x-ndjson',
+      body: events.map((event) => JSON.stringify(event)).join('\n') + '\n',
     });
   });
 
@@ -60,13 +77,38 @@ test('asking Mimus shows the answer with sources that open the real message', as
     await askBox.press('Enter');
     await expect(answer).toBeVisible({ timeout: 2_000 });
   }).toPass({ timeout: 15_000 });
-  await expect(answer).toContainText('signed by Friday');
+  // The answer's markdown renders as formatting, not raw symbols, and an
+  // image (which would auto-load from an untrusted URL) is never rendered.
+  await expect(answer.locator('strong')).toHaveText('signed by Friday');
+  await expect(answer.getByRole('listitem')).toHaveText([
+    'Sign the renewal',
+    'Return it to the landlord',
+  ]);
+  await expect(answer).not.toContainText('**');
+  await expect(answer.locator('img')).toHaveCount(0);
   await answer.getByRole('link', { name: /Lease renewal/ }).click();
 
   // Generous timeout: on a cold `next dev` the first visit compiles the route.
   await expect(page).toHaveURL(`/sources/message/${messageId}`, { timeout: 20_000 });
   await expect(page.getByRole('heading', { name: 'Lease renewal' })).toBeVisible();
   await expect(page.getByText('From Landlord <landlord@example.com>')).toBeVisible();
+});
+
+test('asking Mimus before the AI is configured says so', async ({ page }) => {
+  await signInViaMagicLink(page, `e2e-ask-unconfigured-${Date.now()}@example.com`);
+  await page.route('**/api/agent/ask', (route) =>
+    route.fulfill({ status: 503, json: { error: 'Mimus AI is not configured yet' } }),
+  );
+
+  await page.goto('/sky');
+  const askBox = page.getByRole('textbox', { name: 'Ask Mimus' });
+  const answer = page.getByRole('region', { name: 'Mimus answer' });
+  await expect(async () => {
+    await askBox.fill('anything new?');
+    await askBox.press('Enter');
+    await expect(answer).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 15_000 });
+  await expect(answer).toContainText('Mimus AI is not configured yet');
 });
 
 test("a source link to someone else's private message is not found", async ({ page }) => {
