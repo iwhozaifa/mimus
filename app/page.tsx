@@ -8,11 +8,12 @@ import { SiteFooter } from '@/components/site-footer';
 const SOURCES = [
   {
     name: 'Gmail and Google Calendar',
-    detail: 'Read-only. Mimus never sends, changes or deletes email or events.',
+    detail:
+      'Read-only by default. Mimus sends a scheduling reply or books a meeting only if you allow it, and only within the approval level you choose.',
   },
   {
     name: 'Microsoft Outlook mail and calendar',
-    detail: 'Read-only, the same as Google.',
+    detail: 'The same as Google: read-only unless you allow sending and booking.',
   },
   {
     name: 'Slack',
@@ -20,7 +21,7 @@ const SOURCES = [
   },
   {
     name: 'Calendly',
-    detail: 'Your scheduled bookings, read-only.',
+    detail: 'Your scheduled bookings and booking link, read-only.',
   },
 ];
 
@@ -77,6 +78,10 @@ export default function Home() {
               To answer a question, Mimus sends short excerpts of the relevant messages to its AI
               provider. Your data is never used to train AI models, never sold and never used for
               ads.
+            </li>
+            <li>
+              Mimus can reply to people who want to meet you and book the meeting. By default it
+              waits for your approval before sending or booking anything.
             </li>
             <li>Disconnecting an account deletes everything Mimus imported from it.</li>
           </ul>

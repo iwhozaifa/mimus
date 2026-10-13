@@ -1,6 +1,6 @@
 # Mimus V1 (First Stage, Web App) — Implementation Plan
 
-> **Status (2026-10-09):** Milestones 1–4 are merged to `main` (PRs #1–#51). Milestone 5 (Scheduling + approvals) is next. See `AGENTS.md` for the practices this plan established, and "Work outside the milestone plan" below for the front end, performance and Gmail-quota work done between milestones.
+> **Status (2026-10-14):** Milestones 1–5 are merged to `main` (M5: PRs #60–#64). Milestone 6 (Sky, Ground, morning brief, Settings → Web V1 live) is next. See `AGENTS.md` for the practices this plan established, and "Work outside the milestone plan" below for the front end, performance and Gmail-quota work done between milestones.
 >
 > Code-complete here means: every task's tests pass locally and in CI. Live end-to-end testing has been done for the **Google connector only** (a real Gmail + Calendar account connected and backfilled locally, 2026-10-09). Microsoft, Slack, Calendly and the OpenAI API are still waiting on the repo owner's credentials (see "External accounts" below), and push notifications/webhooks on every provider are waiting on a deployed public URL.
 
@@ -209,7 +209,27 @@ Known open issues:
 - Users who signed up through an invite before the fix (which stopped auto-provisioning a workspace when signing in to accept a pending invite) may still belong to two workspaces, and get an arbitrary one of them until a workspace switcher exists. Left as is by decision.
 - New Gmail/Outlook mail doesn't sync after the initial backfill yet. The first `watch()`/Graph subscription is registered by the renewal cron (it picks up accounts with no watch), and that cron isn't scheduled until there's a deployed URL (and, for Gmail, a Pub/Sub topic).
 
-### Milestone 5 — Scheduling + approvals
+### Milestone 5 — Scheduling + approvals ✅ code-complete
+
+**Status:** merged (2026-10-14) as five PRs:
+
+| PR  | What it added                                                                                                                                                                                       |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| #60 | Migration 0019: `scheduling_rules`, `approval_settings` (levels 1–4, default 2), `scheduling_proposals`, `claim_scheduling_proposal()`, `connected_accounts.scheduling_url`                         |
+| #61 | `scheduling/freeBusy.ts` (live Google/Microsoft free/busy + stored events, stale fallback), `findSlots.ts`; `proposeMeetingTimes` on real rules                                                     |
+| #62 | Opt-in write scopes ("Allow sending and booking", incremental consent), `connectors/write.ts` (Gmail reply, Calendar/Graph event creation), Calendly scheduling link                                |
+| #63 | `draftReply.ts` (template-only replies), `proposals.ts` (levels 1–4, Calendly branch, atomic approval), `createSchedulingProposal` agent tool, `/approvals`, `/settings/scheduling`, migration 0020 |
+| #64 | Privacy Policy, Terms, verification checklist and copy updated for sending and booking                                                                                                              |
+
+Approval levels as built: 1 = draft only; 2 = approve every send and booking (default); 3 = offers (times or Calendly link) send automatically, bookings wait; 4 = fully automatic (books the earliest slot).
+
+Still open:
+
+- Live testing with a real Google account (connect → Allow sending and booking → propose → approve). Microsoft and Calendly are mock-tested only until their credentials exist.
+- Detecting scheduling requests in incoming mail automatically. Proposals are user-started for now; background detection needs live mail sync (Vercel + Pub/Sub) and M6's server-minted JWT.
+- Reading the other person's reply to pick a slot automatically. Today the user clicks "Book this time".
+
+Plan of record:
 
 - `scheduling_rules`/`approval_settings` migrations; `src/server/scheduling/{freeBusy,draftReply,bookEvent}.ts`; approval levels 1–4 in the `draft` module's `requiresApproval` flag.
 - Tests first: free/busy merge across all connected calendars; all 4 approval levels; Calendly-link-vs-offer-times branch.

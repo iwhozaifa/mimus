@@ -32,6 +32,7 @@ You must be at least [TODO: minimum age, recommended 18] years old and able to f
 Mimus works by reading data from services you choose to connect: Google (Gmail and Calendar), Microsoft (Outlook mail and calendar), Slack and Calendly.
 
 - You authorize Mimus to access each service with the read-only permissions shown when you connect it. Our [Privacy Policy](/privacy) says exactly what we do with that data.
+- **Sending and booking are optional.** If you click "Allow sending and booking" for a Google or Microsoft account, you also authorize Mimus to send scheduling replies from that account and to create meetings on its calendar, within the approval level you choose (section 7).
 - Connect only accounts you're entitled to use. Make sure that connecting them, and any visibility you give your workspace, is allowed by your employer's policies and by those services' own terms.
 - Your use of those services stays governed by their terms. We are not responsible for their availability or for changes they make to their APIs.
 - You can disconnect a service at any time. Doing so deletes its imported data from Mimus.
@@ -51,16 +52,24 @@ You must not:
 
 ## 6. Your content
 
-- **You own your content.** That means the data you connect, the questions you ask, and the drafts and answers produced for you.
+- **You own your content.** That means the data you connect, the questions you ask, and the drafts, answers and scheduling replies produced for you.
 - **What you allow us to do with it.** You grant us a limited licence to host, copy, process and transmit your content only as needed to provide the Service to you and your workspace, as described in the Privacy Policy. This licence ends when your content is deleted.
 - **You're responsible for your content** and for having the rights to connect it.
 
 ## 7. AI features
 
-Mimus uses AI (currently provided by OpenAI) to answer questions about your connected data and to draft emails.
+Mimus uses AI (currently provided by OpenAI) to answer questions about your connected data and to draft emails. It can also help you schedule meetings.
 
 - **AI output can be wrong or incomplete.** It can misread a message or leave out something important. Check anything that matters, especially dates, amounts, commitments and anything involving other people, against the original sources Mimus links to.
-- **Mimus does not act on its own.** Email drafts are shown to you and are never sent automatically. Mimus cannot currently send email or create calendar events. [TODO: update when approval-based sending and booking ship]
+- **Mimus acts for you only as far as you allow.** General email drafts are shown to you and are never sent. Scheduling replies and meeting bookings follow the approval level you choose in Scheduling settings:
+  1. **Draft only:** nothing is sent or booked; you send the reply yourself.
+  2. **Approve every send and booking** (the default): nothing is sent or booked until you approve it.
+  3. **Offers go out automatically:** replies that only offer times or your Calendly link are sent without asking; bookings still wait for you.
+  4. **Fully automatic:** Mimus sends the reply and books the earliest free time without asking.
+
+  Mimus can send and book only from accounts where you allowed it. Scheduling replies use a fixed template rather than free AI-written text, and go only to the person who asked to meet.
+
+- **You're responsible for what's sent and booked in your name,** including anything sent or booked automatically at level 3 or 4. Check your settings, working hours and calendars, and review what Mimus did on the Approvals page. Free times come from your connected calendars and can be wrong if a calendar isn't connected or is out of date.
 - **The AI sees only what you can see.** It searches your data with your own access rights.
 - **You decide what to rely on.** AI output isn't professional, legal, financial or medical advice. You're responsible for decisions you make and messages you send based on it.
 - **Usage limits.** We may limit AI usage, for example under your plan's spending cap.
