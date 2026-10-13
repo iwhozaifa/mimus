@@ -1,5 +1,6 @@
 import { isGoogleConfigured, isSlackConfigured } from '@/src/server/connectors/bootstrap';
 import { connectionLabel } from '@/src/server/connectors/labels';
+import { canSendAndBook } from '@/src/server/connectors/writeScopes';
 import type { AccountType, Provider } from '@/src/server/connectors/types';
 import { getCurrentWorkspaceContext } from '@/src/server/workspaces/getCurrentWorkspaceContext';
 import Link from 'next/link';
@@ -17,6 +18,8 @@ interface AccountRow {
   id: string;
   provider: Provider;
   account_type: AccountType;
+  owner_user_id: string;
+  scopes: string[] | null;
   external_account_id: string | null;
   provider_team_name: string | null;
   provider_team_domain: string | null;
@@ -29,6 +32,11 @@ const ERROR_MESSAGES: Record<string, string> = {
   google_invalid_state: 'That Google sign-in expired or came from another session. Try again.',
   google_connect_failed: "Couldn't finish connecting Google. Try again.",
   google_not_configured: "Google connection isn't set up on this deployment yet.",
+  microsoft_denied: 'Microsoft connection was cancelled.',
+  microsoft_invalid_state:
+    'That Microsoft sign-in expired or came from another session. Try again.',
+  microsoft_connect_failed: "Couldn't finish connecting Microsoft. Try again.",
+  microsoft_not_configured: "Microsoft connection isn't set up on this deployment yet.",
   slack_denied: 'Slack connection was cancelled.',
   slack_invalid_state: 'That Slack sign-in expired or came from another session. Try again.',
   slack_connect_failed: "Couldn't finish connecting Slack. Try again.",
@@ -63,14 +71,14 @@ async function ConnectionsList({ searchParams }: { searchParams: SearchParams })
     );
   }
 
-  const { supabase, workspaceId } = context;
+  const { supabase, workspaceId, userId } = context;
   const { error: errorParam } = await searchParams;
   const errorCode = typeof errorParam === 'string' ? errorParam : null;
 
   const { data } = await supabase
     .from('connected_accounts')
     .select(
-      'id, provider, account_type, external_account_id, provider_team_name, provider_team_domain, visibility, status',
+      'id, provider, account_type, owner_user_id, scopes, external_account_id, provider_team_name, provider_team_domain, visibility, status',
     )
     .eq('workspace_id', workspaceId)
     .in('status', ['connected', 'needs_reauth'])
@@ -88,8 +96,9 @@ async function ConnectionsList({ searchParams }: { searchParams: SearchParams })
       <div>
         <h1 className="text-2xl font-semibold text-ink">Connections</h1>
         <p className="mt-1 text-sm text-ink-muted">
-          Connect the accounts Mimus reads from. Access is read-only, and each connection has its
-          own visibility.
+          Connect the accounts Mimus reads from. Access is read-only unless you allow Mimus to send
+          scheduling replies and book meetings from an account. Each connection has its own
+          visibility.
         </p>
       </div>
 
@@ -99,7 +108,11 @@ async function ConnectionsList({ searchParams }: { searchParams: SearchParams })
         </p>
       )}
 
-      <GoogleCard accounts={byProvider('google')} configured={isGoogleConfigured()} />
+      <GoogleCard
+        accounts={byProvider('google')}
+        configured={isGoogleConfigured()}
+        userId={userId}
+      />
       <SlackCard accounts={byProvider('slack')} configured={isSlackConfigured()} />
 
       <Card>
@@ -107,7 +120,18 @@ async function ConnectionsList({ searchParams }: { searchParams: SearchParams })
         {otherAccounts.length > 0 && (
           <ul className="mb-6 flex flex-col divide-y divide-line-muted">
             {otherAccounts.map((account) => (
-              <AccountItem key={account.id} account={account} showIdentifier />
+              <AccountItem
+                key={account.id}
+                account={account}
+                showIdentifier
+                sendAndBook={
+                  account.provider === 'microsoft' &&
+                  account.account_type === 'email' &&
+                  account.owner_user_id === userId ? (
+                    <SendAndBook provider="microsoft" rows={[account]} />
+                  ) : null
+                }
+              />
             ))}
           </ul>
         )}
@@ -129,6 +153,26 @@ interface ConnectionGroup {
   heading: string;
   subheading?: string | null;
   rows: AccountRow[];
+  action?: ReactNode;
+}
+
+// Sending scheduling replies and booking meetings need permissions a
+// normal connect never asks for. Shown only on the user's own accounts:
+// the person who connected an account is the only one who can grant it.
+function SendAndBook({ provider, rows }: { provider: 'google' | 'microsoft'; rows: AccountRow[] }) {
+  const address = rows[0]?.external_account_id ?? '';
+  if (rows.every((row) => canSendAndBook(provider, row.scopes))) {
+    return <Badge variant="accent-soft">Can send and book</Badge>;
+  }
+  const params = new URLSearchParams({ access: 'write', account: address });
+  return (
+    <Link
+      href={`/api/connectors/${provider}/start?${params}`}
+      className="text-sm font-medium text-accent-strong hover:text-accent"
+    >
+      Allow sending and booking
+    </Link>
+  );
 }
 
 // The shared MCP-style connector card: one group per connected account
@@ -175,13 +219,15 @@ function ConnectorCard({
                     <span className="text-sm break-all text-ink-muted">{group.subheading}</span>
                   )}
                 </div>
-                {group.rows.some((row) => row.status === 'needs_reauth') && configured && (
+                {group.rows.some((row) => row.status === 'needs_reauth') && configured ? (
                   <Link
                     href={startHref}
                     className="text-sm font-medium text-accent-strong hover:text-accent"
                   >
                     Reconnect
                   </Link>
+                ) : (
+                  configured && group.action
                 )}
               </div>
               <ul className="flex flex-col divide-y divide-line-muted">
@@ -207,7 +253,15 @@ function ConnectorCard({
 
 // One Google grant connects both Gmail and Calendar for one address, so
 // accounts are grouped by address, each listing its two rows.
-function GoogleCard({ accounts, configured }: { accounts: AccountRow[]; configured: boolean }) {
+function GoogleCard({
+  accounts,
+  configured,
+  userId,
+}: {
+  accounts: AccountRow[];
+  configured: boolean;
+  userId: string;
+}) {
   const byAddress = new Map<string, AccountRow[]>();
   for (const account of accounts) {
     const address = account.external_account_id ?? 'Google account';
@@ -220,14 +274,22 @@ function GoogleCard({ accounts, configured }: { accounts: AccountRow[]; configur
       description={
         <>
           Connect a Google account to give Mimus read-only access to its inbox and calendar. You can
-          connect more than one. Our{' '}
+          connect more than one, and separately allow Mimus to send scheduling replies and book
+          meetings from one. Our{' '}
           <Link href="/privacy" className="underline underline-offset-2 hover:text-ink">
             Privacy Policy
           </Link>{' '}
           explains how Mimus uses Google data.
         </>
       }
-      groups={[...byAddress].map(([address, rows]) => ({ key: address, heading: address, rows }))}
+      groups={[...byAddress].map(([address, rows]) => ({
+        key: address,
+        heading: address,
+        rows,
+        action: rows.every((row) => row.owner_user_id === userId) ? (
+          <SendAndBook provider="google" rows={rows} />
+        ) : null,
+      }))}
       startHref="/api/connectors/google/start"
       configured={configured}
       connectLabel="Connect Google account"
@@ -272,9 +334,11 @@ function SlackCard({ accounts, configured }: { accounts: AccountRow[]; configure
 function AccountItem({
   account,
   showIdentifier = false,
+  sendAndBook,
 }: {
   account: AccountRow;
   showIdentifier?: boolean;
+  sendAndBook?: ReactNode;
 }) {
   return (
     <li className="flex flex-wrap items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
@@ -290,6 +354,7 @@ function AccountItem({
         )}
       </div>
       <div className="flex items-center gap-3">
+        {sendAndBook}
         <VisibilitySelect accountId={account.id} visibility={account.visibility} />
         <DisconnectButton accountId={account.id} />
       </div>

@@ -35,6 +35,50 @@ describe('microsoft oauth', () => {
     );
   });
 
+  it('adds Mail.Send and Calendars.ReadWrite only when asked to allow sending and booking', async () => {
+    const spy = vi
+      .spyOn(ConfidentialClientApplication.prototype, 'getAuthCodeUrl')
+      .mockResolvedValue('https://login.microsoftonline.com/mock');
+
+    await getAuthUrl('s');
+    expect(spy.mock.calls[0][0].scopes).not.toContain('Mail.Send');
+
+    await getAuthUrl('s', { write: true, loginHint: 'founder@example.com' });
+    expect(spy).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        scopes: expect.arrayContaining([
+          'Mail.Read',
+          'Calendars.Read',
+          'Mail.Send',
+          'Calendars.ReadWrite',
+        ]),
+        loginHint: 'founder@example.com',
+      }),
+    );
+  });
+
+  it('reports the scopes Microsoft granted with the exchanged session', async () => {
+    const acquire = vi
+      .spyOn(ConfidentialClientApplication.prototype, 'acquireTokenByCode')
+      .mockResolvedValue({
+        account: { username: 'founder@example.com' },
+        scopes: ['Mail.Read', 'Mail.Send'],
+      } as never);
+    vi.spyOn(ConfidentialClientApplication.prototype, 'getTokenCache').mockReturnValue({
+      serialize: () => 'cache',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    const result = await exchangeCode('code', { write: true });
+
+    expect(acquire).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scopes: expect.arrayContaining(['Mail.Send', 'Calendars.ReadWrite']),
+      }),
+    );
+    expect(result.scopes).toEqual(['Mail.Read', 'Mail.Send']);
+  });
+
   it('throws a clear error (not a network call) when Microsoft OAuth env vars are unset', async () => {
     vi.unstubAllEnvs();
     await expect(getAuthUrl('x')).rejects.toThrow(/Microsoft OAuth is not configured/);
@@ -54,6 +98,7 @@ describe('microsoft oauth', () => {
     expect(result).toEqual({
       accountEmail: 'founder@example.com',
       serializedCache: 'serialized-cache-blob',
+      scopes: [],
     });
   });
 

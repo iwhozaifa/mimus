@@ -19,6 +19,7 @@ describe('completeMicrosoftConnection', () => {
     vi.mocked(exchangeCode).mockResolvedValue({
       accountEmail: 'founder@example.com',
       serializedCache: 'serialized-cache-blob',
+      scopes: ['Mail.Read', 'Calendars.Read'],
     });
   });
 
@@ -77,5 +78,32 @@ describe('completeMicrosoftConnection', () => {
       const stored = pgByteaToBuffer(secret!.encrypted_refresh_token as string);
       expect(stored.toString('utf8')).not.toContain('serialized-cache-blob');
     }
+  });
+
+  it('reconnecting the same address updates its rows in place, recording the newly granted scopes', async () => {
+    const { workspaceId, userId } = await makeWorkspace();
+    const first = await completeMicrosoftConnection({ workspaceId, userId, code: 'c1' });
+    expect(first.every((row) => row.scopes?.join() === 'Mail.Read,Calendars.Read')).toBe(true);
+
+    vi.mocked(exchangeCode).mockResolvedValue({
+      accountEmail: 'Founder@Example.com',
+      serializedCache: 'upgraded-cache',
+      scopes: ['Mail.Read', 'Calendars.Read', 'Mail.Send', 'Calendars.ReadWrite'],
+    });
+    const second = await completeMicrosoftConnection({
+      workspaceId,
+      userId,
+      code: 'c2',
+      write: true,
+    });
+
+    expect(exchangeCode).toHaveBeenLastCalledWith('c2', { write: true });
+    expect(second.map((row) => row.id).sort()).toEqual(first.map((row) => row.id).sort());
+    expect(second.every((row) => row.scopes?.includes('Mail.Send'))).toBe(true);
+    const { count } = await supabase
+      .from('connected_accounts')
+      .select('id', { count: 'exact', head: true })
+      .eq('owner_user_id', userId);
+    expect(count).toBe(2);
   });
 });

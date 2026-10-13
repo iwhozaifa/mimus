@@ -5,12 +5,15 @@ import {
   encryptToken,
   pgByteaToBuffer,
 } from '@/src/server/crypto/tokenVault';
+import type { AuthUrlOptions } from '@/src/server/connectors/types';
+import { writeScopesFor } from '@/src/server/connectors/writeScopes';
 import { google } from 'googleapis';
 
-// Read-only scopes only -- V1 never sends on the user's behalf. Covers
-// both account_type rows (email, calendar) a single Google OAuth grant
-// produces (see the two-sibling-rows design decision in the milestone
-// plan).
+// Read-only scopes for a normal connect. Covers both account_type rows
+// (email, calendar) a single Google OAuth grant produces (see the
+// two-sibling-rows design decision in the milestone plan). Sending and
+// booking need writeScopes.ts's extra scopes, requested only when the user
+// allows them.
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/calendar.readonly',
@@ -65,7 +68,7 @@ export function requireOAuthClient() {
 // Returns a Promise only to satisfy the shared Connector interface
 // (Microsoft's MSAL client genuinely needs one) -- this one never actually
 // awaits anything.
-export async function getAuthUrl(state: string): Promise<string> {
+export async function getAuthUrl(state: string, options: AuthUrlOptions = {}): Promise<string> {
   return requireOAuthClient().generateAuthUrl({
     access_type: 'offline',
     // select_account always shows Google's account chooser, so a user
@@ -73,7 +76,8 @@ export async function getAuthUrl(state: string): Promise<string> {
     // turn; consent guarantees a refresh token on every connect.
     prompt: 'select_account consent',
     include_granted_scopes: true,
-    scope: SCOPES,
+    scope: options.write ? [...SCOPES, ...writeScopesFor('google')] : SCOPES,
+    ...(options.loginHint ? { login_hint: options.loginHint } : {}),
     state,
   });
 }

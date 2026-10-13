@@ -75,9 +75,11 @@ export async function seedConnectedAccount(
     providerTeamId = null,
     providerTeamName = null,
     providerTeamDomain = null,
+    scopes = null,
   }: {
-    provider?: 'google' | 'slack';
+    provider?: 'google' | 'microsoft' | 'slack';
     accountType?: 'email' | 'calendar' | 'slack';
+    scopes?: string[] | null;
     externalAccountId?: string;
     providerTeamId?: string | null;
     providerTeamName?: string | null;
@@ -110,6 +112,7 @@ export async function seedConnectedAccount(
       provider_team_id: providerTeamId,
       provider_team_name: providerTeamName,
       provider_team_domain: providerTeamDomain,
+      scopes,
     })
     .select('id')
     .single();

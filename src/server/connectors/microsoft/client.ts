@@ -14,7 +14,13 @@ import type { ICachePlugin } from '@azure/msal-node';
 // authProvider callback below defers acquireTokenSilent() until Graph
 // actually issues a request -- so, same as Google, no network call happens
 // just from calling this function.
-export async function getAuthorizedGraphClient(connectedAccountId: string): Promise<Client> {
+// scopes defaults to the read scopes every connection has; sending and
+// booking pass the write ones (writeScopes.ts), which MSAL can only issue
+// for an account that granted them.
+export async function getAuthorizedGraphClient(
+  connectedAccountId: string,
+  scopes: string[] = SCOPES,
+): Promise<Client> {
   const supabase = createServiceClient();
   const { data: secret, error } = await supabase
     .from('connected_account_secrets')
@@ -56,7 +62,7 @@ export async function getAuthorizedGraphClient(connectedAccountId: string): Prom
   return Client.init({
     authProvider: (done) => {
       msalClient
-        .acquireTokenSilent({ account, scopes: SCOPES })
+        .acquireTokenSilent({ account, scopes })
         .then((result) => done(null, result.accessToken))
         .catch((err) => done(err, null));
     },
