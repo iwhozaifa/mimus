@@ -34,9 +34,17 @@ async function TopNavServer() {
     return <TopNav identity={null} />;
   }
 
+  // Proposals waiting on the user's decision (RLS: their own only).
+  const { count } = await context.supabase
+    .from('scheduling_proposals')
+    .select('id', { count: 'exact', head: true })
+    .eq('workspace_id', context.workspaceId)
+    .eq('status', 'pending');
+
   return (
     <TopNav
       identity={{ initials: getInitials(context.fullName, context.email), email: context.email }}
+      pendingApprovals={count ?? 0}
     />
   );
 }

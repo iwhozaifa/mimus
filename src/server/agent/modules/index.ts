@@ -42,13 +42,14 @@ export const AGENT_MODULES: AgentModule[] = [
   {
     name: 'schedule',
     nature: 'scheduling',
-    description: 'Find meeting times or check availability.',
+    description:
+      'Find meeting times, check availability, or reply to someone asking to meet (offer times or a Calendly link).',
     defaultTier: 'standard',
     defaultPriority: 'interactive',
     needs: { sources: ['calendar', 'email'] },
     permissions: { requiresApproval: true },
-    tools: ['searchEvents', 'searchMessages', 'proposeMeetingTimes'],
+    tools: ['searchEvents', 'searchMessages', 'proposeMeetingTimes', 'createSchedulingProposal'],
     instructions:
-      'Use proposeMeetingTimes for free slots and present two or three options. Nothing is booked automatically.',
+      'To reply to someone who asked to meet, find their email with searchMessages, then call createSchedulingProposal with its id, and say where it stands: waiting in Approvals, sent, booked, or a draft to send yourself. To just check availability, use proposeMeetingTimes and present two or three options. Never claim something was sent or booked unless the tool result says so.',
   },
 ];

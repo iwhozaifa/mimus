@@ -6,7 +6,7 @@ import { Suspense } from 'react';
 import { Card } from '@/components/ui/card';
 import { ToggleSwitch } from './toggle-switch';
 
-const HARDCODED_KEYS = ['money', 'pipeline', 'projects', 'canopy'];
+const HARDCODED_KEYS = ['money', 'pipeline', 'projects', 'canopy', 'scheduling'];
 
 function labelFor(key: string): string {
   return key.charAt(0).toUpperCase() + key.slice(1);
