@@ -198,6 +198,11 @@ Done between milestones, at the repo owner's request:
 - **Sky / Canopy / Ground redesign (PRs #28, #29):** the client's three mockups built at `/sky`, `/canopy`, `/ground` against typed mock data (`src/mock/`). This supersedes the old widget-tile Sky / per-person Ground spec in M6; extend these pages rather than rebuilding them.
 - **Performance (PR #45):** request-scoped `cache()` on `getCurrentWorkspaceContext`/`isWorkspaceReadOnly`. Further steps (asymmetric JWT signing keys, `useOptimistic`, RLS `(select auth.uid())` + indexes, a `preview` script) are planned but not started.
 - **Gmail quota (PRs #46, #47):** retry with backoff on Gmail's 403 quota errors; thread-based backfill paced by `QuotaPacer`, which skips unchanged threads on resume and excludes spam, trash, Promotions and Social.
+- **Google OAuth verification prep (`feature/legal-pages`):**
+  - **Policies:** a draft Privacy Policy and Terms of Service in `legal/*.md`, served as public static pages at `/privacy` and `/terms`. They contain `[TODO]` placeholders and need legal review.
+  - **Homepage:** a public homepage, with a Privacy and Terms footer.
+  - **Account deletion:** Settings → Account → Delete account (`src/server/account/deleteAccount.ts`; migration 0018 detaches `agent_logs`, `invites` and `manager_id` so a user can be deleted), plus public `/account-deletion` instructions.
+  - **Submission prep:** `legal/google-verification-checklist.md` lists the remaining blockers: domain and hosting, CASA, M5 scopes, and Owner-widened visibility.
 
 Known open issues:
 
