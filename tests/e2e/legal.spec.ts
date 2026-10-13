@@ -18,10 +18,29 @@ test('the Privacy Policy is public and carries the Google Limited Use disclosure
   ).toHaveAttribute('href', 'https://developers.google.com/terms/api-services-user-data-policy');
 });
 
+test('the Privacy Policy discloses the optional send and book permissions and approval levels', async ({
+  page,
+}) => {
+  await page.goto('/privacy');
+  await expect(page.getByRole('heading', { name: /Scheduling \(optional\)/ })).toBeVisible();
+  for (const scope of [
+    'https://www.googleapis.com/auth/gmail.send',
+    'https://www.googleapis.com/auth/calendar.events',
+  ]) {
+    await expect(page.getByText(scope, { exact: true }).first()).toBeVisible();
+  }
+  await expect(page.getByText(/Approve every send and booking/).first()).toBeVisible();
+  await expect(page.getByText('Mimus does not request permission to send')).toHaveCount(0);
+});
+
 test('the Terms of Service is public', async ({ page }) => {
   await page.goto('/terms');
   await expect(page).toHaveURL(/\/terms$/);
   await expect(page.getByRole('heading', { level: 1, name: 'Terms of Service' })).toBeVisible();
+  // Sending and booking follow the user's approval level, and the
+  // pre-Milestone-5 "cannot send" promise is gone.
+  await expect(page.getByText(/Fully automatic/).first()).toBeVisible();
+  await expect(page.getByText(/cannot currently send email/)).toHaveCount(0);
 });
 
 test('the account deletion instructions are public', async ({ page }) => {
