@@ -217,7 +217,16 @@ function GoogleCard({ accounts, configured }: { accounts: AccountRow[]; configur
   return (
     <ConnectorCard
       title="Gmail & Google Calendar"
-      description="Connect a Google account to give Mimus read-only access to its inbox and calendar. You can connect more than one."
+      description={
+        <>
+          Connect a Google account to give Mimus read-only access to its inbox and calendar. You can
+          connect more than one. Our{' '}
+          <Link href="/privacy" className="underline underline-offset-2 hover:text-ink">
+            Privacy Policy
+          </Link>{' '}
+          explains how Mimus uses Google data.
+        </>
+      }
       groups={[...byAddress].map(([address, rows]) => ({ key: address, heading: address, rows }))}
       startHref="/api/connectors/google/start"
       configured={configured}

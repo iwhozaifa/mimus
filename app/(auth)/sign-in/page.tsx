@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Suspense } from 'react';
 import { SignInForm } from './sign-in-form';
 
@@ -12,6 +13,17 @@ export default function SignInPage() {
         <Suspense fallback={<p className="text-sm text-slate-500">Loading…</p>}>
           <SignInForm />
         </Suspense>
+        <p className="mt-6 text-xs text-slate-500">
+          By continuing, you agree to the{' '}
+          <Link href="/terms" className="underline underline-offset-2 hover:text-slate-700">
+            Terms of Service
+          </Link>{' '}
+          and acknowledge the{' '}
+          <Link href="/privacy" className="underline underline-offset-2 hover:text-slate-700">
+            Privacy Policy
+          </Link>
+          .
+        </p>
       </div>
     </main>
   );

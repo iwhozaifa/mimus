@@ -12,6 +12,7 @@ const LINKS = [
   { href: '/billing', label: 'Billing' },
   { href: '/feature-switches', label: 'Feature switches' },
   { href: '/audit-log', label: 'Audit log' },
+  { href: '/settings/account', label: 'Account' },
 ];
 
 export function AvatarMenu({ initials, email }: { initials: string; email: string }) {
@@ -61,6 +62,14 @@ export function AvatarMenu({ initials, email }: { initials: string; email: strin
           </ul>
           <div className="mt-2 border-t border-line-muted pt-2">
             <SignOutButton />
+          </div>
+          <div className="mt-2 flex gap-3 border-t border-line-muted px-3 pt-2 text-xs text-ink-faint">
+            <Link href="/privacy" onClick={() => setOpen(false)} className="hover:text-ink">
+              Privacy
+            </Link>
+            <Link href="/terms" onClick={() => setOpen(false)} className="hover:text-ink">
+              Terms
+            </Link>
           </div>
         </div>
       )}
