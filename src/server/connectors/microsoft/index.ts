@@ -3,6 +3,7 @@ import { completeMicrosoftConnection } from '@/src/server/connectors/microsoft/c
 import { disconnectMicrosoftAccount } from '@/src/server/connectors/microsoft/disconnect';
 import { getAuthUrl, refreshAndStoreTokens } from '@/src/server/connectors/microsoft/oauth';
 import { handleMicrosoftGraphWebhook } from '@/src/server/connectors/microsoft/webhook';
+import { getMicrosoftBusy } from '@/src/server/connectors/microsoft/freeBusy';
 import { registerConnector } from '@/src/server/connectors/registry';
 import type { Connector } from '@/src/server/connectors/types';
 
@@ -33,6 +34,7 @@ export const microsoftConnector: Connector = {
   async poll() {
     notImplemented('poll');
   },
+  getBusy: getMicrosoftBusy,
   async refreshToken(connectedAccountId) {
     await refreshAndStoreTokens(connectedAccountId);
   },

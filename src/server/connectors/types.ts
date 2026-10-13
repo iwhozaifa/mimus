@@ -36,6 +36,12 @@ export interface SendResult {
   providerMessageId: string;
 }
 
+// A busy block on a calendar, as ISO 8601 instants.
+export interface BusyInterval {
+  start: string;
+  end: string;
+}
+
 export interface Connector {
   provider: Provider;
   capabilities: AccountType[];
@@ -48,6 +54,10 @@ export interface Connector {
   poll(connectedAccountId: string): Promise<void>;
   refreshToken(connectedAccountId: string): Promise<void>;
   send?(connectedAccountId: string, draft: unknown): Promise<SendResult>;
+  // Live busy time on a calendar account, straight from the provider, so
+  // scheduling doesn't depend on how fresh the stored events are. Only
+  // providers with a calendar implement it.
+  getBusy?(connectedAccountId: string, from: Date, to: Date): Promise<BusyInterval[]>;
   // Per-account webhook subscription setup, for providers where that's a
   // one-time registration call rather than Google/Microsoft's
   // renewal-cron-driven watch() (which treats a brand-new account's null

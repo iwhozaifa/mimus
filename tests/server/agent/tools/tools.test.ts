@@ -204,13 +204,44 @@ describe('agent tools (user-scoped, real local Supabase)', () => {
       alice,
     );
 
+    // Alice's calendar has no stored credentials here, so the live
+    // provider check fails and the tool says its answer may be stale.
     expect(result.data).toEqual({
       timeZone: 'UTC',
+      stale: true,
       slots: [
         { start: '2026-10-13T12:00:00.000Z', end: '2026-10-13T13:00:00.000Z' },
         { start: '2026-10-13T12:30:00.000Z', end: '2026-10-13T13:30:00.000Z' },
         { start: '2026-10-13T13:00:00.000Z', end: '2026-10-13T14:00:00.000Z' },
       ],
+    });
+  });
+
+  it('proposeMeetingTimes follows the asker’s saved working hours and time zone', async () => {
+    await alice.supabase
+      .from('scheduling_rules')
+      .insert({
+        workspace_id: fx.workspaceId,
+        user_id: fx.alice.id,
+        time_zone: 'Asia/Karachi',
+        work_start: '17:00',
+        work_end: '19:00',
+        min_notice_hours: 0,
+      })
+      .throwOnError();
+
+    const result = await runTool(
+      ALL_TOOLS,
+      'proposeMeetingTimes',
+      { durationMinutes: 60, from: '2026-10-13T00:00:00Z', to: '2026-10-14T00:00:00Z', count: 1 },
+      alice,
+    );
+
+    // 17:00 in Karachi (UTC+5) is 12:00 UTC, just after Alice's 09-12 UTC event.
+    expect(result.data).toEqual({
+      timeZone: 'Asia/Karachi',
+      stale: true,
+      slots: [{ start: '2026-10-13T12:00:00.000Z', end: '2026-10-13T13:00:00.000Z' }],
     });
   });
 

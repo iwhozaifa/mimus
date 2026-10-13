@@ -1,47 +1,18 @@
 import { boundedInt, optionalString, requiredDate } from '@/src/server/agent/tools/input';
 import { ToolInputError, type AgentTool } from '@/src/server/agent/tools/types';
+import { findSlots } from '@/src/server/scheduling/findSlots';
+import { getBusyIntervals } from '@/src/server/scheduling/freeBusy';
+import { loadSchedulingRules } from '@/src/server/scheduling/rules';
 
-const STEP_MS = 30 * 60_000;
-const WORKDAY_START_HOUR = 9;
-const WORKDAY_END_HOUR = 17;
 const MAX_WINDOW_DAYS = 31;
 
-function zonedParts(date: Date, timeZone: string) {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-US', {
-      timeZone,
-      hourCycle: 'h23',
-      weekday: 'short',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-      .formatToParts(date)
-      .map((part) => [part.type, part.value]),
-  );
-  return {
-    weekday: parts.weekday as string,
-    hour: Number(parts.hour),
-    minute: Number(parts.minute),
-  };
-}
-
-function isWorkingTime(start: Date, end: Date, timeZone: string): boolean {
-  const s = zonedParts(start, timeZone);
-  const e = zonedParts(new Date(end.getTime() - 1), timeZone);
-  if (s.weekday === 'Sat' || s.weekday === 'Sun' || s.weekday !== e.weekday) return false;
-  return s.hour >= WORKDAY_START_HOUR && e.hour < WORKDAY_END_HOUR;
-}
-
-// Free slots in the asker's OWN calendars (not teammates' -- even ones they
-// can see), on a 30-minute grid inside 9-5 weekdays in their time zone.
-// Milestone 5's freeBusy replaces this with real scheduling rules.
+// Free slots across the asker's OWN calendars (not teammates' -- even ones
+// they can see), inside the working hours, notice and buffer from their
+// scheduling rules.
 export const proposeMeetingTimes: AgentTool = {
   name: 'proposeMeetingTimes',
   description:
-    "Propose free meeting slots from the asker's own calendars (weekdays 9:00-17:00 in timeZone).",
+    "Propose free meeting slots from the asker's own calendars, inside their working hours. Omit timeZone to use the asker's own.",
   inputSchema: {
     type: 'object',
     properties: {
@@ -54,9 +25,16 @@ export const proposeMeetingTimes: AgentTool = {
     required: ['durationMinutes', 'from', 'to'],
   },
   async run(ctx, input) {
-    const durationMs = boundedInt(input, 'durationMinutes', 30, 15, 480) * 60_000;
-    const count = boundedInt(input, 'count', 3, 1, 10);
-    const timeZone = optionalString(input, 'timeZone', 64) ?? 'UTC';
+    const rules = await loadSchedulingRules(ctx.supabase, ctx.workspaceId, ctx.userId);
+    const durationMinutes = boundedInt(
+      input,
+      'durationMinutes',
+      rules.defaultDurationMinutes,
+      15,
+      480,
+    );
+    const count = boundedInt(input, 'count', rules.offerCount, 1, 10);
+    const timeZone = optionalString(input, 'timeZone', 64) ?? rules.timeZone;
     try {
       new Intl.DateTimeFormat('en-US', { timeZone });
     } catch {
@@ -71,29 +49,12 @@ export const proposeMeetingTimes: AgentTool = {
       ),
     );
 
-    const { data, error } = await ctx.supabase
-      .from('events')
-      .select('starts_at, ends_at, status, connected_accounts!inner(owner_user_id, account_type)')
-      .eq('connected_accounts.owner_user_id', ctx.userId)
-      .eq('connected_accounts.account_type', 'calendar')
-      .lt('starts_at', to.toISOString())
-      .gt('ends_at', from.toISOString());
-    if (error) throw error;
-    const busy = (data ?? [])
-      .filter((event) => event.status !== 'cancelled')
-      .map((event) => [new Date(event.starts_at).getTime(), new Date(event.ends_at).getTime()]);
-
-    const slots: Array<{ start: string; end: string }> = [];
-    let cursor = Math.ceil(from.getTime() / STEP_MS) * STEP_MS;
-    while (slots.length < count && cursor + durationMs <= to.getTime()) {
-      const start = new Date(cursor);
-      const end = new Date(cursor + durationMs);
-      const free = busy.every(([s, e]) => e <= start.getTime() || s >= end.getTime());
-      if (free && isWorkingTime(start, end, timeZone)) {
-        slots.push({ start: start.toISOString(), end: end.toISOString() });
-      }
-      cursor += STEP_MS;
-    }
-    return { data: { timeZone, slots }, sources: [] };
+    const { busy, stale } = await getBusyIntervals(ctx, from, to);
+    const slots = findSlots(
+      busy,
+      { ...rules, timeZone },
+      { from, to, now, durationMinutes, count },
+    );
+    return { data: { timeZone, ...(stale ? { stale } : {}), slots }, sources: [] };
   },
 };

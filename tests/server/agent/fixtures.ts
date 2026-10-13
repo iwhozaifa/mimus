@@ -18,8 +18,8 @@ export interface AgentFixture {
   bob: FixtureUser;
   connect(
     user: FixtureUser,
-    provider: 'google' | 'slack',
-    accountType: 'email' | 'calendar' | 'slack',
+    provider: 'google' | 'microsoft' | 'slack' | 'calendly',
+    accountType: 'email' | 'calendar' | 'slack' | 'scheduling',
     visibility?: 'private' | 'team' | 'company',
   ): Promise<string>;
   signIn(user: FixtureUser): Promise<SupabaseClient>;

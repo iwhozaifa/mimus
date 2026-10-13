@@ -3,6 +3,7 @@ import { completeGoogleConnection } from '@/src/server/connectors/google/connect
 import { disconnectGoogleAccount } from '@/src/server/connectors/google/disconnect';
 import { getAuthUrl, refreshAndStoreTokens } from '@/src/server/connectors/google/oauth';
 import { handleGooglePubSubPush } from '@/src/server/connectors/google/webhook';
+import { getGoogleBusy } from '@/src/server/connectors/google/freeBusy';
 import { registerConnector } from '@/src/server/connectors/registry';
 import type { Connector } from '@/src/server/connectors/types';
 
@@ -34,6 +35,7 @@ export const googleConnector: Connector = {
   async poll() {
     notImplemented('poll');
   },
+  getBusy: getGoogleBusy,
   async refreshToken(connectedAccountId) {
     await refreshAndStoreTokens(connectedAccountId);
   },
