@@ -8,10 +8,12 @@ import {
 
 // scheduled_events:read lets sync.ts list bookings and invitees;
 // webhooks:write is only for managing this connector's own webhook
-// subscription (see webhook.ts's registerCalendlyWebhook). No scope that
+// subscription (see webhook.ts's registerCalendlyWebhook); users:read is
+// for the user's own profile, to read their scheduling link (connect.ts),
+// which Mimus can offer in a scheduling reply. No scope that
 // can create, reschedule, or cancel a booking is ever requested -- Mimus
 // never books through Calendly (see sync.ts's own read-only guarantee).
-const SCOPES = ['scheduled_events:read', 'webhooks:write'];
+const SCOPES = ['scheduled_events:read', 'webhooks:write', 'users:read'];
 
 const AUTH_BASE = 'https://auth.calendly.com';
 

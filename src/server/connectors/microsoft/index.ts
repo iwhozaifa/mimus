@@ -4,6 +4,7 @@ import { disconnectMicrosoftAccount } from '@/src/server/connectors/microsoft/di
 import { getAuthUrl, refreshAndStoreTokens } from '@/src/server/connectors/microsoft/oauth';
 import { handleMicrosoftGraphWebhook } from '@/src/server/connectors/microsoft/webhook';
 import { getMicrosoftBusy } from '@/src/server/connectors/microsoft/freeBusy';
+import { createMicrosoftEvent, sendMicrosoftReply } from '@/src/server/connectors/microsoft/write';
 import { registerConnector } from '@/src/server/connectors/registry';
 import type { Connector } from '@/src/server/connectors/types';
 
@@ -23,6 +24,7 @@ export const microsoftConnector: Connector = {
       workspaceId: params.workspaceId,
       userId: params.userId,
       code: params.code,
+      write: params.write,
     });
   },
   async backfill(connectedAccountId) {
@@ -35,6 +37,8 @@ export const microsoftConnector: Connector = {
     notImplemented('poll');
   },
   getBusy: getMicrosoftBusy,
+  sendReply: sendMicrosoftReply,
+  createEvent: createMicrosoftEvent,
   async refreshToken(connectedAccountId) {
     await refreshAndStoreTokens(connectedAccountId);
   },

@@ -20,7 +20,8 @@ export async function GET(request: NextRequest) {
   const nonceCookie = cookieStore.get(MICROSOFT_OAUTH_NONCE_COOKIE)?.value;
   cookieStore.delete(MICROSOFT_OAUTH_NONCE_COOKIE);
 
-  let decoded: { workspaceId: string; userId: string; nonce: string } | null = null;
+  let decoded: { workspaceId: string; userId: string; nonce: string; write?: boolean } | null =
+    null;
   try {
     decoded = JSON.parse(Buffer.from(state, 'base64url').toString('utf8'));
   } catch {
@@ -47,6 +48,7 @@ export async function GET(request: NextRequest) {
       userId: decoded.userId,
       code,
       state,
+      write: decoded.write === true,
     });
   } catch (err) {
     console.error('Microsoft OAuth callback failed', err);
@@ -55,7 +57,11 @@ export async function GET(request: NextRequest) {
 
   // Runs after the redirect response is sent -- see google/callback/route.ts's
   // comment.
-  for (const row of rows) {
+  // Allowing sending and booking reconnects accounts that are already
+  // imported, so only a brand-new account (signed in to instead of the
+  // one offered) needs the backfill.
+  const toBackfill = decoded.write ? rows.filter((row) => !row.backfill_completed_at) : rows;
+  for (const row of toBackfill) {
     after(() =>
       getConnector('microsoft')
         .backfill(row.id)

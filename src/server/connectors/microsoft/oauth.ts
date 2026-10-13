@@ -5,9 +5,12 @@ import {
   encryptToken,
   pgByteaToBuffer,
 } from '@/src/server/crypto/tokenVault';
+import type { AuthUrlOptions } from '@/src/server/connectors/types';
+import { writeScopesFor } from '@/src/server/connectors/writeScopes';
 import { ConfidentialClientApplication, type ICachePlugin } from '@azure/msal-node';
 
-// Read-only scopes only -- V1 never sends on the user's behalf, mirroring
+// Read-only scopes for a normal connect (sending and booking add
+// writeScopes.ts's, only when the user allows them), mirroring
 // the Google connector. offline_access is requested explicitly so MSAL's
 // token cache actually gets a refresh token, not just a short-lived access
 // token (unlike Google, MSAL's public API never exposes that refresh token
@@ -60,18 +63,26 @@ export function requireOAuthClient(cachePlugin?: ICachePlugin) {
   return client;
 }
 
-export async function getAuthUrl(state: string): Promise<string> {
+function scopesFor(write?: boolean): string[] {
+  return write ? [...SCOPES, ...writeScopesFor('microsoft')] : SCOPES;
+}
+
+export async function getAuthUrl(state: string, options: AuthUrlOptions = {}): Promise<string> {
   return requireOAuthClient().getAuthCodeUrl({
-    scopes: SCOPES,
+    scopes: scopesFor(options.write),
     redirectUri: redirectUri(),
     state,
     prompt: 'consent',
+    ...(options.loginHint ? { loginHint: options.loginHint } : {}),
   });
 }
 
 export interface ExchangedSession {
   accountEmail: string;
   serializedCache: string;
+  // What Microsoft actually granted, which decides whether Mimus can send
+  // and book (see writeScopes.ts).
+  scopes: string[];
 }
 
 // Unlike Google's OAuth2Client, MSAL never hands back a raw refresh-token
@@ -84,18 +95,25 @@ export interface ExchangedSession {
 // connected_account_secrets.encrypted_refresh_token isn't a refresh token --
 // it's that whole serialized cache blob, treated as the long-lived
 // credential. encrypted_access_token is left unused for Microsoft rows.
-export async function exchangeCode(code: string): Promise<ExchangedSession> {
+export async function exchangeCode(
+  code: string,
+  options: { write?: boolean } = {},
+): Promise<ExchangedSession> {
   const client = requireOAuthClient();
   const result = await client.acquireTokenByCode({
     code,
-    scopes: SCOPES,
+    scopes: scopesFor(options.write),
     redirectUri: redirectUri(),
   });
   const accountEmail = result.account?.username;
   if (!accountEmail) {
     throw new Error('Microsoft did not return an account for this authorization code');
   }
-  return { accountEmail, serializedCache: client.getTokenCache().serialize() };
+  return {
+    accountEmail,
+    serializedCache: client.getTokenCache().serialize(),
+    scopes: result.scopes ?? [],
+  };
 }
 
 // Fans a serialized cache out to every sibling connected_accounts row

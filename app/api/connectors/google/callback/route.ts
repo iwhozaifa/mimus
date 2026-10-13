@@ -20,7 +20,8 @@ export async function GET(request: NextRequest) {
   const nonceCookie = cookieStore.get(GOOGLE_OAUTH_NONCE_COOKIE)?.value;
   cookieStore.delete(GOOGLE_OAUTH_NONCE_COOKIE);
 
-  let decoded: { workspaceId: string; userId: string; nonce: string } | null = null;
+  let decoded: { workspaceId: string; userId: string; nonce: string; write?: boolean } | null =
+    null;
   try {
     decoded = JSON.parse(Buffer.from(state, 'base64url').toString('utf8'));
   } catch {
@@ -47,6 +48,7 @@ export async function GET(request: NextRequest) {
       userId: decoded.userId,
       code,
       state,
+      write: decoded.write === true,
     });
   } catch (err) {
     console.error('Google OAuth callback failed', err);
@@ -55,7 +57,11 @@ export async function GET(request: NextRequest) {
 
   // Runs after the redirect response is sent -- a 90-day backfill across
   // both sibling rows is too slow to block the OAuth round-trip on.
-  for (const row of rows) {
+  // Allowing sending and booking reconnects accounts that are already
+  // imported, so only a brand-new account (signed in to instead of the
+  // one offered) needs the backfill.
+  const toBackfill = decoded.write ? rows.filter((row) => !row.backfill_completed_at) : rows;
+  for (const row of toBackfill) {
     after(() =>
       getConnector('google')
         .backfill(row.id)

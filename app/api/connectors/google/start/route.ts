@@ -10,7 +10,13 @@ import { randomUUID } from 'node:crypto';
 // request/cookie/redirect plumbing that's exercised by Playwright e2e and
 // manual testing instead (same split already used by app/auth/callback).
 
-export async function GET() {
+// ?access=write asks for the send-and-book permissions on top of the read
+// ones, for the account named in ?account= (see writeScopes.ts).
+export async function GET(request: Request) {
+  const params = new URL(request.url).searchParams;
+  const write = params.get('access') === 'write';
+  const loginHint = params.get('account') ?? undefined;
+
   const context = await getCurrentWorkspaceContext();
   if (!context) {
     redirect('/sign-in');
@@ -22,7 +28,7 @@ export async function GET() {
   // the OAuth authorization-code flow.
   const nonce = randomUUID();
   const state = Buffer.from(
-    JSON.stringify({ workspaceId: context.workspaceId, userId: context.userId, nonce }),
+    JSON.stringify({ workspaceId: context.workspaceId, userId: context.userId, nonce, write }),
   ).toString('base64url');
 
   (await cookies()).set(GOOGLE_OAUTH_NONCE_COOKIE, nonce, {
@@ -35,7 +41,7 @@ export async function GET() {
 
   let authUrl: string;
   try {
-    authUrl = await getConnector('google').getAuthUrl(state);
+    authUrl = await getConnector('google').getAuthUrl(state, { write, loginHint });
   } catch (err) {
     if (err instanceof Error && err.message.includes('Google OAuth is not configured')) {
       redirect('/settings/connections?error=google_not_configured');

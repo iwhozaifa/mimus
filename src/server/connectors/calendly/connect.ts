@@ -1,4 +1,5 @@
 import { createServiceClient } from '@/src/db/service';
+import { calendlyGet } from '@/src/server/connectors/calendly/client';
 import { exchangeCode } from '@/src/server/connectors/calendly/oauth';
 import type { ConnectedAccountRow } from '@/src/server/connectors/types';
 import { bufferToPgBytea, encryptToken } from '@/src/server/crypto/tokenVault';
@@ -13,6 +14,21 @@ import { bufferToPgBytea, encryptToken } from '@/src/server/crypto/tokenVault';
 // webhook.ts's registerCalendlyWebhook (a webhook subscription always
 // needs its owning organization, regardless of scope), same generic
 // column Slack's provider_team_id uses for its own workspace concept.
+// The user's public booking page, which a scheduling reply can offer
+// instead of specific times. Optional: a connection made before Mimus
+// asked for users:read can't read it, and that shouldn't fail the connect.
+async function fetchSchedulingUrl(accessToken: string): Promise<string | null> {
+  try {
+    const { resource } = await calendlyGet<{ resource: { scheduling_url?: string } }>(
+      accessToken,
+      '/users/me',
+    );
+    return resource.scheduling_url ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function completeCalendlyConnection(params: {
   workspaceId: string;
   userId: string;
@@ -22,6 +38,8 @@ export async function completeCalendlyConnection(params: {
 
   const { ciphertext: encryptedAccessToken, keyVersion } = await encryptToken(tokens.accessToken);
   const { ciphertext: encryptedRefreshToken } = await encryptToken(tokens.refreshToken);
+
+  const schedulingUrl = await fetchSchedulingUrl(tokens.accessToken);
 
   const supabase = createServiceClient();
   const { data: account } = await supabase
@@ -34,6 +52,7 @@ export async function completeCalendlyConnection(params: {
       visibility: 'private',
       external_account_id: tokens.ownerUri,
       provider_team_id: tokens.organizationUri,
+      scheduling_url: schedulingUrl,
     })
     .select('*')
     .single()

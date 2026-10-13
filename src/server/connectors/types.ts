@@ -14,6 +14,8 @@ export interface ConnectedAccountRow {
   account_type: AccountType;
   visibility: 'private' | 'team' | 'company';
   external_account_id: string | null;
+  scopes: string[] | null;
+  backfill_completed_at?: string | null;
   // Which provider-side workspace/tenant this account belongs to, distinct
   // from external_account_id (which identifies the person, not the
   // workspace). Slack populates it to find every member connected to the
@@ -30,6 +32,33 @@ export interface OAuthCallbackParams {
   userId: string;
   code: string;
   state: string;
+  // True when the user is granting the extra send-and-book permissions
+  // (see writeScopes.ts), not making a first, read-only connection.
+  write?: boolean;
+}
+
+export interface AuthUrlOptions {
+  // Ask for the send-and-book permissions on top of the read ones.
+  write?: boolean;
+  // Preselect the account, so the extra permissions go to the right one.
+  loginHint?: string;
+}
+
+// A reply to a message Mimus stored, sent from the account it arrived in.
+export interface ReplyDraft {
+  sourceMessageId: string;
+  to: string[];
+  subject: string;
+  body: string;
+}
+
+export interface NewCalendarEvent {
+  title: string;
+  description?: string;
+  start: string;
+  end: string;
+  attendees: string[];
+  videoLink: boolean;
 }
 
 export interface SendResult {
@@ -47,13 +76,20 @@ export interface Connector {
   capabilities: AccountType[];
   // Async because Microsoft's MSAL client has to look up the authority's
   // endpoint metadata before it can build the URL -- Google's doesn't.
-  getAuthUrl(state: string): Promise<string>;
+  getAuthUrl(state: string, options?: AuthUrlOptions): Promise<string>;
   handleOAuthCallback(params: OAuthCallbackParams): Promise<ConnectedAccountRow[]>;
   backfill(connectedAccountId: string): Promise<void>;
   handleWebhook(req: Request): Promise<Response>;
   poll(connectedAccountId: string): Promise<void>;
   refreshToken(connectedAccountId: string): Promise<void>;
-  send?(connectedAccountId: string, draft: unknown): Promise<SendResult>;
+  // Sending and booking, for providers Mimus can do them through. Callers
+  // go through connectors/write.ts, which checks the account was granted
+  // the write permissions first.
+  sendReply?(emailAccountId: string, draft: ReplyDraft): Promise<SendResult>;
+  createEvent?(
+    calendarAccountId: string,
+    event: NewCalendarEvent,
+  ): Promise<{ providerEventId: string }>;
   // Live busy time on a calendar account, straight from the provider, so
   // scheduling doesn't depend on how fresh the stored events are. Only
   // providers with a calendar implement it.
