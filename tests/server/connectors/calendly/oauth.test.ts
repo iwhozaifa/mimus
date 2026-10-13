@@ -28,7 +28,9 @@ describe('calendly oauth', () => {
     expect(parsed.searchParams.get('response_type')).toBe('code');
     expect(parsed.searchParams.get('state')).toBe('random-state-value');
     const scopes = parsed.searchParams.get('scope')!.split(' ');
-    expect(scopes).toEqual(expect.arrayContaining(['scheduled_events:read', 'webhooks:write']));
+    expect(scopes).toEqual(
+      expect.arrayContaining(['scheduled_events:read', 'webhooks:write', 'users:read']),
+    );
   });
 
   it('throws a clear error (not a network call) when Calendly OAuth env vars are unset', async () => {

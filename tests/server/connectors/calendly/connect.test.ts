@@ -23,10 +23,18 @@ describe('completeCalendlyConnection', () => {
       ownerUri: 'https://api.calendly.com/users/abc',
       organizationUri: 'https://api.calendly.com/organizations/def',
     });
+    // Never reach the real Calendly API from a test.
+    const realFetch = globalThis.fetch;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) =>
+      String(input).startsWith('https://api.calendly.com/')
+        ? new Response('not stubbed', { status: 500 })
+        : realFetch(input, init),
+    );
   });
 
   afterEach(async () => {
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
     await Promise.all(createdUserIds.map((id) => supabase.auth.admin.deleteUser(id)));
     createdUserIds.length = 0;
   });
@@ -79,5 +87,44 @@ describe('completeCalendlyConnection', () => {
     expect(storedAccess.toString('utf8')).not.toContain('access-123');
     const storedRefresh = pgByteaToBuffer(secret!.encrypted_refresh_token as string);
     expect(storedRefresh.toString('utf8')).not.toContain('refresh-123');
+  });
+
+  it('stores the user’s Calendly scheduling link, read from /users/me', async () => {
+    const realFetch = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    const fetchSpy = vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === 'https://api.calendly.com/users/me') {
+        return Response.json({ resource: { scheduling_url: 'https://calendly.com/founder' } });
+      }
+      return realFetch(input, init);
+    });
+    const { workspaceId, userId } = await makeWorkspace();
+
+    const [row] = await completeCalendlyConnection({ workspaceId, userId, code: 'fake-code' });
+
+    const { data } = await supabase
+      .from('connected_accounts')
+      .select('scheduling_url')
+      .eq('id', row.id)
+      .single()
+      .throwOnError();
+    expect(data!.scheduling_url).toBe('https://calendly.com/founder');
+    expect(fetchSpy).toHaveBeenCalled();
+  });
+
+  it('still connects when the scheduling link can’t be read', async () => {
+    const realFetch = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    const fetchSpy = vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+      if (String(input) === 'https://api.calendly.com/users/me') {
+        return new Response('forbidden', { status: 403 });
+      }
+      return realFetch(input, init);
+    });
+    const { workspaceId, userId } = await makeWorkspace();
+
+    const [row] = await completeCalendlyConnection({ workspaceId, userId, code: 'fake-code' });
+
+    expect(row.status).toBe('connected');
+    expect(fetchSpy).toHaveBeenCalled();
   });
 });

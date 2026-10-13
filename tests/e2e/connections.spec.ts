@@ -150,3 +150,42 @@ test('the Connect Slack workspace link points at the OAuth start route when Slac
     await expect(page.getByRole('link', { name: /connect slack/i })).toHaveCount(0);
   }
 });
+
+test('an own Google account offers “Allow sending and booking” until it has the write permissions', async ({
+  page,
+}) => {
+  test.skip(!googleConfigured, 'The OAuth link only shows when Google is configured');
+  const email = `e2e-connections-write-${Date.now()}@example.com`;
+  const readOnly = `readonly-${Date.now()}@example.com`;
+  const writable = `writable-${Date.now()}@example.com`;
+  await signInViaMagicLink(page, email);
+  const read = [
+    'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/calendar.readonly',
+  ];
+  const write = [
+    'https://www.googleapis.com/auth/gmail.send',
+    'https://www.googleapis.com/auth/calendar.events',
+  ];
+  for (const accountType of ['email', 'calendar'] as const) {
+    await seedConnectedAccount(email, { accountType, externalAccountId: readOnly, scopes: read });
+    await seedConnectedAccount(email, {
+      accountType,
+      externalAccountId: writable,
+      scopes: [...read, ...write],
+    });
+  }
+
+  await page.goto('/settings/connections');
+
+  const allow = page
+    .getByRole('group', { name: readOnly })
+    .getByRole('link', { name: 'Allow sending and booking' });
+  await expect(allow).toHaveAttribute(
+    'href',
+    `/api/connectors/google/start?access=write&account=${encodeURIComponent(readOnly)}`,
+  );
+  await expect(
+    page.getByRole('group', { name: writable }).getByText('Can send and book'),
+  ).toBeVisible();
+});

@@ -33,6 +33,24 @@ describe('google oauth', () => {
     expect(parsed.searchParams.get('scope')).toContain('calendar.readonly');
   });
 
+  it('stays read-only unless the user asks to allow sending and booking', async () => {
+    const readOnly = new URL(await getAuthUrl('s')).searchParams.get('scope')!;
+    expect(readOnly).not.toContain('gmail.send');
+    expect(readOnly).not.toContain('calendar.events');
+
+    const parsed = new URL(
+      await getAuthUrl('s', { write: true, loginHint: 'founder@example.com' }),
+    );
+    const scope = parsed.searchParams.get('scope')!;
+    expect(scope).toContain('gmail.readonly');
+    expect(scope).toContain('calendar.readonly');
+    expect(scope).toContain('https://www.googleapis.com/auth/gmail.send');
+    expect(scope).toContain('https://www.googleapis.com/auth/calendar.events');
+    // Incremental consent: keeps what was already granted, on the same account.
+    expect(parsed.searchParams.get('include_granted_scopes')).toBe('true');
+    expect(parsed.searchParams.get('login_hint')).toBe('founder@example.com');
+  });
+
   it('reports whether all three Google OAuth env vars are set', () => {
     expect(isGoogleConfigured()).toBe(true);
     for (const name of [
