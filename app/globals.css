@@ -1,26 +1,91 @@
 @import 'tailwindcss';
 
-@theme {
-  --color-paper: #f7f7f5;
-  --color-paper-raised: #ffffff;
-  --color-line-muted: #e6e6e2;
+/* Dark mode is a class on <html>, set before first paint by the inline
+   script in app/layout.tsx from the visitor's choice or their system
+   setting. */
+@custom-variant dark (&:where(.dark, .dark *));
 
-  --color-ink: #0a0a0a;
-  --color-ink-foreground: #fafafa;
-  --color-ink-muted: #6b6f76;
-  --color-ink-faint: #9a9da3;
+/* Brand: forest green #15AC75 (bright green #38E0A2 on dark), near-black
+   #0C0C0C, green tint #DAFAEE. Green is reserved for what moves: actions,
+   links, status. */
+:root {
+  --paper: #f7f7f5;
+  --paper-raised: #ffffff;
+  --line-muted: #e6e6e2;
 
-  --color-accent: #10b981;
-  --color-accent-strong: #059669;
-  --color-accent-soft: #d6f5e3;
-  --color-accent-foreground: #ffffff;
+  --ink: #0c0c0c;
+  --ink-foreground: #fafafa;
+  --ink-muted: #5f636a;
+  --ink-faint: #8d9097;
 
-  --color-danger: #dc2626;
-  --color-danger-soft: #fee2e2;
+  --accent: #15ac75;
+  --accent-strong: #0e8a5d;
+  --accent-soft: #dafaee;
+  --accent-foreground: #ffffff;
+
+  --danger: #dc2626;
+  --danger-soft: #fee2e2;
+
+  --brand-wing: #15ac75;
+
+  color-scheme: light;
+}
+
+.dark {
+  --paper: #0c0c0c;
+  --paper-raised: #161616;
+  --line-muted: #2a2a2a;
+
+  --ink: #f4f4f2;
+  --ink-foreground: #0c0c0c;
+  --ink-muted: #a6a9af;
+  --ink-faint: #74777e;
+
+  --accent: #38e0a2;
+  --accent-strong: #38e0a2;
+  --accent-soft: #0f3426;
+  --accent-foreground: #0c0c0c;
+
+  --danger: #f87171;
+  --danger-soft: #3a1414;
+
+  --brand-wing: #38e0a2;
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-raised: var(--paper-raised);
+  --color-line-muted: var(--line-muted);
+
+  --color-ink: var(--ink);
+  --color-ink-foreground: var(--ink-foreground);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+
+  --color-brand-wing: var(--brand-wing);
 
   --radius-card: 1rem;
   --radius-pill: 999px;
 
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-outfit), var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+@layer base {
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-heading);
+  }
 }

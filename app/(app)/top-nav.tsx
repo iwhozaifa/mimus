@@ -1,19 +1,15 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { MimusLogo } from '@/components/brand/logo';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { AvatarMenu } from './avatar-menu';
 import { AskBar } from './ask-bar';
 import { ViewToggle } from './view-toggle';
 
 function Logo() {
   return (
-    <Link href="/sky" className="flex items-center gap-2 text-lg font-semibold text-ink">
-      <svg viewBox="0 0 24 24" fill="none" className="size-5 text-accent" aria-hidden>
-        <path
-          d="M3 12c4-7 11-9 18-9-1 7-3 14-11 15-2.5.3-5-.3-7-2 2-1 4-1 6-2-3 0-5-1-6-2Z"
-          fill="currentColor"
-        />
-      </svg>
-      mimus
+    <Link href="/sky" aria-label="Mimus home" className="text-ink">
+      <MimusLogo className="h-[30px] w-auto" />
     </Link>
   );
 }
@@ -46,6 +42,7 @@ export function TopNav({
             </span>
           </Link>
         )}
+        <ThemeToggle />
         {identity ? (
           <AvatarMenu initials={identity.initials} email={identity.email} />
         ) : (

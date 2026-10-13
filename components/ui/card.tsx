@@ -12,7 +12,9 @@ export function Card({
   const base = 'rounded-card p-6';
   const tone =
     variant === 'dark'
-      ? 'bg-ink text-ink-foreground'
+      ? // A dark panel in light mode; in dark mode the page is already dark,
+        // so it becomes a raised panel instead of turning light.
+        'bg-ink text-ink-foreground dark:border dark:border-line-muted dark:bg-paper-raised dark:text-ink'
       : 'border border-line-muted bg-paper-raised text-ink';
 
   return (
