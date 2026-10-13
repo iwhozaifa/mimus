@@ -35,6 +35,7 @@ const TOOL_STATUS: Record<string, string> = {
   slackSearch: 'Searching Slack…',
   draftEmail: 'Drafting the email…',
   proposeMeetingTimes: 'Finding free times…',
+  createSchedulingProposal: 'Preparing a scheduling reply…',
 };
 
 const MAX_TOOL_ROUNDS = 6;

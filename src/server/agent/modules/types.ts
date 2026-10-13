@@ -11,6 +11,9 @@ export interface AgentModule {
   defaultTier: ModelTier;
   defaultPriority: 'interactive' | 'background';
   needs: { sources: Array<'email' | 'calendar' | 'slack'>; crossSource?: boolean };
+  // True for skills that act on the founder's behalf (drafting, sending,
+  // booking). Their tools never act beyond the user's approval level
+  // (approval_settings, levels 1-4), which the scheduling code enforces.
   permissions: { requiresApproval?: boolean };
   tools: ToolName[];
   instructions: string;

@@ -4,6 +4,7 @@ import { connection } from 'next/server';
 import { Suspense } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { ProposeButton } from './propose-button';
 
 // Where a tapped Mimus source lands. Read under the viewer's own session,
 // so a source id for something they can't see is simply not found.
@@ -29,13 +30,13 @@ async function SourceContent({ paramsPromise }: { paramsPromise: Params }) {
   const { kind, id } = await paramsPromise;
   const context = await getCurrentWorkspaceContext();
   if (!context) redirect(`/sign-in?next=/sources/${kind}/${id}`);
-  const { supabase } = context;
+  const { supabase, userId } = context;
 
   if (kind === 'message') {
     const { data: message } = await supabase
       .from('messages')
       .select(
-        'subject, body_text, snippet, sent_at, connected_accounts!inner(provider), from_person:people!messages_from_person_id_fkey(email, display_name)',
+        'subject, body_text, snippet, sent_at, connected_accounts!inner(provider, owner_user_id, account_type), from_person:people!messages_from_person_id_fkey(email, display_name)',
       )
       .eq('id', id)
       .maybeSingle<{
@@ -43,7 +44,7 @@ async function SourceContent({ paramsPromise }: { paramsPromise: Params }) {
         body_text: string | null;
         snippet: string | null;
         sent_at: string | null;
-        connected_accounts: { provider: string };
+        connected_accounts: { provider: string; owner_user_id: string; account_type: string };
         from_person: { email: string | null; display_name: string | null } | null;
       }>();
     if (!message) notFound();
@@ -65,6 +66,14 @@ async function SourceContent({ paramsPromise }: { paramsPromise: Params }) {
         <p className="text-sm whitespace-pre-wrap text-ink">
           {message.body_text ?? message.snippet ?? ''}
         </p>
+        {/* Only from the user's own inbox: a reply always goes from the
+            account the email arrived in. */}
+        {message.connected_accounts.owner_user_id === userId &&
+          message.connected_accounts.account_type === 'email' && (
+            <div className="mt-6 border-t border-line-muted pt-4">
+              <ProposeButton messageId={id} />
+            </div>
+          )}
       </Card>
     );
   }

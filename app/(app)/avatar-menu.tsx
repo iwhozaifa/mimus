@@ -7,7 +7,9 @@ import { Avatar } from '@/components/ui/avatar';
 import { SignOutButton } from '../sign-out-button';
 
 const LINKS = [
+  { href: '/approvals', label: 'Approvals' },
   { href: '/settings/connections', label: 'Connections' },
+  { href: '/settings/scheduling', label: 'Scheduling' },
   { href: '/members', label: 'Members' },
   { href: '/billing', label: 'Billing' },
   { href: '/feature-switches', label: 'Feature switches' },

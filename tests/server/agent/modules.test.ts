@@ -19,9 +19,14 @@ describe('agent modules', () => {
   it('only modules that act on the founder’s behalf can draft, and they require approval', () => {
     for (const skill of AGENT_MODULES) {
       if (skill.tools.includes('draftEmail')) expect(skill.permissions.requiresApproval).toBe(true);
+      if (skill.tools.includes('createSchedulingProposal'))
+        expect(skill.permissions.requiresApproval).toBe(true);
     }
     expect(AGENT_MODULES.find((skill) => skill.name === 'lookup')!.tools).not.toContain(
       'draftEmail',
+    );
+    expect(AGENT_MODULES.find((skill) => skill.name === 'schedule')!.tools).toContain(
+      'createSchedulingProposal',
     );
   });
 });

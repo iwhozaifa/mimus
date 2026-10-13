@@ -70,3 +70,72 @@ export async function loadApprovalLevel(
   if (error) throw error;
   return (data?.level as ApprovalLevel | undefined) ?? DEFAULT_APPROVAL_LEVEL;
 }
+
+// A problem with what the user entered; safe to show them.
+export class SettingsError extends Error {}
+
+export interface SchedulingSettings extends SchedulingRules {
+  level: number;
+}
+
+const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+function validate(settings: SchedulingSettings) {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: settings.timeZone });
+  } catch {
+    throw new SettingsError('Choose a time zone like Europe/London or America/New_York.');
+  }
+  if (!TIME.test(settings.workStart) || !TIME.test(settings.workEnd)) {
+    throw new SettingsError('Working hours need a start and end time.');
+  }
+  if (settings.workStart >= settings.workEnd) {
+    throw new SettingsError('Your day has to end after it starts.');
+  }
+  if (!settings.workingDays.length || settings.workingDays.some((d) => d < 1 || d > 7)) {
+    throw new SettingsError('Pick at least one working day.');
+  }
+  const ranges: Array<[number, number, number, string]> = [
+    [settings.level, 1, 4, 'Choose an approval level.'],
+    [settings.offerCount, 2, 3, 'Offer two or three times.'],
+    [settings.defaultDurationMinutes, 15, 480, 'Meetings run 15 minutes to 8 hours.'],
+    [settings.bufferMinutes, 0, 120, 'The buffer can be up to two hours.'],
+    [settings.minNoticeHours, 0, 336, 'Notice can be up to two weeks.'],
+  ];
+  for (const [value, min, max, message] of ranges) {
+    if (!Number.isInteger(value) || value < min || value > max) throw new SettingsError(message);
+  }
+}
+
+// Saved under the user's own session: RLS only lets them write their own
+// rows, and only name one of their own calendars to book into.
+export async function saveSchedulingSettings(
+  supabase: SupabaseClient,
+  workspaceId: string,
+  userId: string,
+  settings: SchedulingSettings,
+): Promise<void> {
+  validate(settings);
+  const now = new Date().toISOString();
+  const { error: rulesError } = await supabase.from('scheduling_rules').upsert({
+    workspace_id: workspaceId,
+    user_id: userId,
+    time_zone: settings.timeZone,
+    working_days: [...new Set(settings.workingDays)].sort(),
+    work_start: settings.workStart,
+    work_end: settings.workEnd,
+    default_duration_minutes: settings.defaultDurationMinutes,
+    buffer_minutes: settings.bufferMinutes,
+    min_notice_hours: settings.minNoticeHours,
+    offer_count: settings.offerCount,
+    prefer_calendly_link: settings.preferCalendlyLink,
+    booking_calendar_account_id: settings.bookingCalendarAccountId,
+    add_video_link: settings.addVideoLink,
+    updated_at: now,
+  });
+  if (rulesError) throw rulesError;
+  const { error: levelError } = await supabase
+    .from('approval_settings')
+    .upsert({ workspace_id: workspaceId, user_id: userId, level: settings.level, updated_at: now });
+  if (levelError) throw levelError;
+}

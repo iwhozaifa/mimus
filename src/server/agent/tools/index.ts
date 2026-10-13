@@ -1,3 +1,4 @@
+import { createSchedulingProposal } from '@/src/server/agent/tools/createSchedulingProposal';
 import { draftEmail } from '@/src/server/agent/tools/draftEmail';
 import { proposeMeetingTimes } from '@/src/server/agent/tools/proposeMeetingTimes';
 import { searchEvents } from '@/src/server/agent/tools/searchEvents';
@@ -19,6 +20,7 @@ const TOOLS = {
   slackSearch,
   draftEmail,
   proposeMeetingTimes,
+  createSchedulingProposal,
 } satisfies Record<string, AgentTool>;
 
 export type ToolName = keyof typeof TOOLS;

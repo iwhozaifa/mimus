@@ -136,3 +136,28 @@ export async function signInViaMagicLink(page: Page, email: string): Promise<voi
   // page, or the caller's next navigation gets interrupted by that redirect.
   await page.waitForURL((url) => url.pathname !== '/' && !url.pathname.startsWith('/auth/'));
 }
+
+// An incoming email in one of the user's own connected accounts, for
+// pages that act on a stored message.
+export async function seedInboundMessage(
+  connectedAccountId: string,
+  { subject, fromEmail, fromName }: { subject: string; fromEmail: string; fromName: string },
+): Promise<string> {
+  const { upsertMessage } = await import('@/src/server/shared/normalize');
+  const supabase = createServiceClient();
+  const { data: account, error } = await supabase
+    .from('connected_accounts')
+    .select('workspace_id')
+    .eq('id', connectedAccountId)
+    .single();
+  if (error) throw error;
+  return upsertMessage(account.workspace_id, connectedAccountId, {
+    providerMessageId: `e2e-${Date.now()}-${Math.random()}`,
+    threadId: `e2e-thread-${Date.now()}`,
+    subject,
+    bodyText: 'Could we find 30 minutes next week?',
+    direction: 'inbound',
+    sentAt: new Date().toISOString(),
+    from: { email: fromEmail, displayName: fromName },
+  });
+}

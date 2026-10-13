@@ -1,5 +1,5 @@
 begin;
-select plan(28);
+select plan(30);
 
 select has_table('public', 'scheduling_rules', 'scheduling_rules table exists');
 select has_table('public', 'approval_settings', 'approval_settings table exists');
@@ -178,6 +178,25 @@ select is(
   (select status from claim_scheduling_proposal('5c000000-0000-0000-0000-000000000401', 'reject')),
   'rejected',
   'rejecting a proposal ends it'
+);
+reset role;
+
+-- A draft-only proposal can be dismissed, but never sent from Mimus.
+insert into scheduling_proposals (id, workspace_id, user_id, source_message_id, email_account_id, kind, draft_body, status)
+values ('5c000000-0000-0000-0000-000000000402', '5c000000-0000-0000-0000-000000000102', '5c000000-0000-0000-0000-00000000000b',
+        '5c000000-0000-0000-0000-000000000302', '5c000000-0000-0000-0000-000000000201', 'offer_times', 'Hi', 'draft_only');
+set local role authenticated;
+set local request.jwt.claims to '{"sub":"5c000000-0000-0000-0000-00000000000b","role":"authenticated"}';
+select throws_ok(
+  $$ select claim_scheduling_proposal('5c000000-0000-0000-0000-000000000402', 'send_offer') $$,
+  '55000',
+  null,
+  'a draft-only proposal cannot be sent from Mimus'
+);
+select is(
+  (select status from claim_scheduling_proposal('5c000000-0000-0000-0000-000000000402', 'reject')),
+  'rejected',
+  'a draft-only proposal can be dismissed'
 );
 reset role;
 
