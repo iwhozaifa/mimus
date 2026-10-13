@@ -2,6 +2,8 @@ import {
   DEFAULT_SCHEDULING_RULES,
   loadApprovalLevel,
   loadSchedulingRules,
+  saveSchedulingSettings,
+  SettingsError,
 } from '@/src/server/scheduling/rules';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createAgentFixture, type AgentFixture } from '../agent/fixtures';
@@ -55,5 +57,39 @@ describe('scheduling rules and approval level (real local Supabase)', () => {
       preferCalendlyLink: true,
     });
     expect(await loadApprovalLevel(alice, fx.workspaceId, fx.alice.id)).toBe(3);
+  });
+
+  it('saves settings through the user’s own session, validating them first', async () => {
+    const bob = await fx.signIn(fx.bob);
+    await saveSchedulingSettings(bob, fx.workspaceId, fx.bob.id, {
+      ...DEFAULT_SCHEDULING_RULES,
+      timeZone: 'America/New_York',
+      workStart: '08:00',
+      workEnd: '12:30',
+      level: 4,
+    });
+    expect(await loadSchedulingRules(bob, fx.workspaceId, fx.bob.id)).toMatchObject({
+      timeZone: 'America/New_York',
+      workStart: '08:00',
+      workEnd: '12:30',
+    });
+    expect(await loadApprovalLevel(bob, fx.workspaceId, fx.bob.id)).toBe(4);
+
+    const invalid = [
+      { timeZone: 'Mars/Olympus' },
+      { workStart: '18:00', workEnd: '09:00' },
+      { workingDays: [] },
+      { level: 7 },
+      { offerCount: 5 },
+    ];
+    for (const change of invalid) {
+      await expect(
+        saveSchedulingSettings(bob, fx.workspaceId, fx.bob.id, {
+          ...DEFAULT_SCHEDULING_RULES,
+          level: 2,
+          ...change,
+        } as never),
+      ).rejects.toBeInstanceOf(SettingsError);
+    }
   });
 });
