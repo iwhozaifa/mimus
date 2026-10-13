@@ -31,7 +31,7 @@ Mimus is a business tool that a company ("your organization") sets up for its te
 
 ### Information from services you connect
 
-Mimus only reads data from services you explicitly connect. Connecting is optional, and you can disconnect at any time. Section 3 covers Google in detail. For every connected service:
+Mimus only reads data from services you explicitly connect. Connecting is optional, and you can disconnect at any time. Connecting gives Mimus read-only access. It can send email or create calendar events only if you separately turn that on (see "Scheduling" below). Section 3 covers Google in detail. For every connected service:
 
 - **Email (Gmail or Microsoft Outlook):**
   - What we store: subject line, sender, recipients (To, Cc and Bcc), date, preview snippet, the full message body (plain text and HTML), conversation (thread) ID, whether it was sent or received, and a copy of the message record as returned by the provider's API, including its headers.
@@ -42,9 +42,30 @@ Mimus only reads data from services you explicitly connect. Connecting is option
 - **Slack:**
   - What we store: messages from public and private channels **you are a member of**, from the last 90 days onward.
   - We never request access to direct messages or group DMs, and we filter them out again if one ever arrives.
-- **Calendly:** your scheduled events and their invitees, from 90 days ago to one year ahead. We never create, change or cancel bookings.
+- **Calendly:** your scheduled events and their invitees, from 90 days ago to one year ahead, and the link to your public Calendly booking page (so a scheduling reply can offer it). We never create, change or cancel bookings.
 - **People in your data:** to show who a message or meeting involves, we store the names and email addresses of senders, recipients and attendees found in your connected data. These may be people who don't use Mimus.
-- **Access tokens:** the tokens each service issues so Mimus can read your data. We encrypt them with AES-256-GCM before storing them, and they are never shown to anyone in the app.
+- **Access tokens:** the tokens each service issues so Mimus can read your data (and, if you allow it, send scheduling replies and book meetings). We encrypt them with AES-256-GCM before storing them, and they are never shown to anyone in the app.
+
+### Scheduling (optional)
+
+If you use Mimus to reply to people who want to meet you, we also store:
+
+- **Your scheduling settings:** your time zone, working days and hours, preferred meeting length, buffer, minimum notice, how many times to offer, which calendar to book into, whether to add a video link, whether to offer your Calendly link, and your **approval level** (see below).
+- **Scheduling proposals:** for each reply Mimus drafts, the email it answers, the other person's email address, the subject, the times offered or the Calendly link, the reply text, its status (for example waiting, sent, booked or dismissed), the time you chose and the ID of the resulting calendar event.
+
+Sending and booking are **off until you turn them on** for a specific email account, with "Allow sending and booking" on the Connections page. That asks the provider for these extra permissions:
+
+- **Google:** send email on your behalf (`https://www.googleapis.com/auth/gmail.send`) and view and edit events on your calendars (`https://www.googleapis.com/auth/calendar.events`).
+- **Microsoft:** send mail as you (`Mail.Send`) and read and write your calendars (`Calendars.ReadWrite`).
+
+Your **approval level** decides what Mimus may do without asking you each time:
+
+1. **Draft only:** Mimus writes the reply; you copy it and send it yourself. Nothing is sent or booked.
+2. **Approve every send and booking** (the default): each reply and booking waits until you approve it.
+3. **Offers go out automatically:** a reply that only offers times or your Calendly link is sent straight away; booking a meeting still waits for you.
+4. **Fully automatic:** Mimus sends the reply and books the earliest free time without asking.
+
+Scheduling replies are written from a fixed template, not composed freely by AI. They go only to the person who wrote to you, from the account their email arrived in.
 
 ### Information collected automatically
 
@@ -71,20 +92,29 @@ This section describes exactly what Mimus does with data it receives from Google
 
 ### What we request
 
-Mimus requests two **read-only** permissions:
+When you connect a Google account, Mimus requests two **read-only** permissions:
 
 - **Read your Gmail messages and settings** (`https://www.googleapis.com/auth/gmail.readonly`)
 - **View your Google Calendar events** (`https://www.googleapis.com/auth/calendar.readonly`)
 
-Mimus does not request permission to send, delete or change email, or to create, change or delete calendar events. Signing in to Mimus itself does not use your Google account.
+Only if you click **Allow sending and booking** for that account does Mimus request two more:
+
+- **Send email on your behalf** (`https://www.googleapis.com/auth/gmail.send`)
+- **View and edit events on all your calendars** (`https://www.googleapis.com/auth/calendar.events`)
+
+Mimus never requests permission to delete or change your existing email. Signing in to Mimus itself does not use your Google account.
 
 ### How we use it
 
 - **Gmail:**
   - We read your Gmail address to identify which account you connected.
   - We import your messages as described in section 2 so that you can search them, and so that Mimus's AI can find relevant messages, summarize them and answer questions you ask.
-  - When the AI drafts an email for you, it can use a message you choose to reply to. Drafts are shown to you only and are never sent automatically.
-- **Google Calendar:** we import your events so you can see your schedule in Mimus, and so the AI can answer questions about your meetings and suggest times when you're free.
+  - When the AI drafts an email for you, it can use a message you choose to reply to. These general drafts are shown to you only and are never sent.
+  - **Sending (only if you allowed it):** Mimus uses `gmail.send` for one thing only: sending a scheduling reply, in the same conversation, to the person who asked to meet. It sends only when you approve it or when your approval level allows it (section 2, "Scheduling"). It never sends any other email.
+- **Google Calendar:**
+  - We import your events so you can see your schedule in Mimus, and so the AI can answer questions about your meetings.
+  - We check when you're busy, across your connected calendars, to suggest times when you're free.
+  - **Booking (only if you allowed it):** Mimus uses `calendar.events` for one thing only: creating a meeting you approved, or one your approval level allows, on your calendar with the other person invited. Google then emails them the invitation. Mimus does not change or delete your existing events.
 
 We use Google user data only to provide and improve these user-facing features. "Improve" here means fixing problems you or Mimus run into. It does not mean training AI models.
 
@@ -101,6 +131,7 @@ We use Google user data only to provide and improve these user-facing features. 
 
   [TODO: decide whether to require the account holder's own approval before anyone else widens visibility. See the verification checklist.]
 
+- **With the person you're scheduling with.** A scheduling reply and a meeting invitation go from your own account to the person who asked to meet. They see what any email or invitation from you would show: your name and address, the offered times or your Calendly link, and the meeting details.
 - **With our AI provider, to answer your question.** When you ask Mimus a question, short excerpts of relevant messages and events go to OpenAI to generate the answer: up to 1,500 characters of each email and 500 characters of each event description. See section 5.
 - **With our infrastructure providers,** who store and process data on our behalf under contract (section 5).
 
@@ -137,6 +168,7 @@ Mimus's use and transfer to any other app of information received from Google AP
 We use your information only for the purposes below. The legal basis applies where laws like the GDPR or UK GDPR require one.
 
 - **To provide the Service.** This covers creating your account, running your workspace, importing connected data, search, AI answers and invitations. Legal basis: performance of our contract with you or your organization.
+- **To schedule meetings for you,** if you turn it on: finding free time, drafting replies, and sending and booking according to your approval level. Legal basis: performance of contract.
 - **To answer your questions with AI.** Legal basis: performance of contract.
   1. Your question goes to OpenAI.
   2. OpenAI may ask Mimus to search your data.
@@ -161,7 +193,7 @@ We use these service providers ("processors"). Each receives only what it needs 
 - **Stripe** processes subscription payments. It receives your organization's billing details. Card details go directly to Stripe.
 - **[TODO: hosting provider, e.g. Vercel]** hosts the web app. It processes requests and technical logs. [TODO: region]
 
-**Services you connect** (Google, Microsoft, Slack and Calendly) are not our processors. We only read data from them with your permission, and we never send them your data from other services.
+**Services you connect** (Google, Microsoft, Slack and Calendly) are not our processors. We only read data from them with your permission. If you allow sending and booking, we also use your Google or Microsoft account to send the scheduling replies and create the meetings described in section 2. We never send a service your data from other services, except that a scheduling reply can include your Calendly link.
 
 **Other disclosures:**
 
@@ -171,6 +203,9 @@ We use these service providers ("processors"). Each receives only what it needs 
 ## 6. How long we keep information
 
 - **Connected-service data** (messages, events, contacts, tokens): kept while the service stays connected. Deleted immediately when you disconnect it or delete your account.
+- **Scheduling proposals:** kept while the email they answer is stored. Deleted with it when you disconnect that account, and when you delete your account.
+- **Scheduling settings and approval level:** kept until you delete your account.
+- **Emails and invitations Mimus sent for you:** these live in your own email and calendar account, and in the other person's, like any email you send. Deleting them there is up to you; Mimus doesn't delete them.
 - **Account, profile and workspace data:** kept until you delete your account (section 9). If you're the only member of a workspace, deleting your account also deletes that workspace and everything in it.
 - **AI usage log:** kept for your workspace's records while the workspace exists. When you delete your account, your entries are kept but are no longer linked to you.
 - **Invitations:** kept while the workspace exists, so its Owners can see who was invited and when.
