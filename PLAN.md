@@ -251,7 +251,7 @@ Plan of record:
 
 | Credential                             | Needed at        | Status                                                                            |
 | -------------------------------------- | ---------------- | --------------------------------------------------------------------------------- |
-| Vercel project                         | M1.16            | Pending — not yet logged in; app runs locally against staging DB for now          |
+| Vercel project                         | M1.16            | In progress — app is deploy-ready (`vercel.json`, README); owner creating project |
 | Supabase Cloud project                 | M1.16            | ✅ Done — `mimus-staging` project created and migrated                            |
 | Resend account                         | M1.7             | ✅ Done — sandbox mode (no verified domain yet)                                   |
 | Stripe account                         | M1.11            | Pending — skeleton built, no real test-mode keys yet                              |
