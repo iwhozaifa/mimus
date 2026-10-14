@@ -5,6 +5,11 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { after, type NextRequest } from 'next/server';
 
+// The first import runs in after() below, inside this function's time
+// limit: 300s is the Vercel Hobby maximum (800 on Pro). An import cut off
+// here is picked up again by app/api/cron/resume-backfills.
+export const maxDuration = 300;
+
 // Kept thin and untested by vitest -- see the start route's comment.
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);

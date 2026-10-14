@@ -151,7 +151,7 @@ Both connectors have a push-notification path so new mail/events sync in near-re
 
 - **Google** (`src/server/connectors/google/webhook.ts`): `registerGmailWatch()` calls Gmail's `watch()` against a Cloud Pub/Sub topic (`GOOGLE_PUBSUB_TOPIC`), storing the returned `historyId` as the sync cursor. `POST /api/webhooks/google/pubsub` receives Pub/Sub's push envelope, verifies its OIDC bearer token (audience = `GOOGLE_PUBSUB_AUDIENCE`, optionally also checking `GOOGLE_PUBSUB_SERVICE_ACCOUNT_EMAIL`) against Google's public certs, then walks `history.list` forward from the stored cursor to pick up only what actually changed.
 - **Microsoft** (`src/server/connectors/microsoft/webhook.ts`): `registerGraphSubscription()` creates a Graph change-notification subscription (`/me/messages` or `/me/events`) pointed at `MICROSOFT_GRAPH_NOTIFICATION_URL`, with `MICROSOFT_GRAPH_CLIENT_STATE` as the shared secret Graph echoes back on every notification -- Graph has no cryptographic request signature, so matching that echoed value is the entire authentication check. `POST /api/webhooks/microsoft/graph` answers Graph's validation handshake (`?validationToken=...`) and, for real notifications, re-syncs the matching account via a delta query (`/me/mailFolders('inbox')/messages/delta` or `/me/calendarView/delta`), storing the returned `@odata.deltaLink` as the next sync cursor.
-- **Renewal** (`app/api/cron/renew-watches`): Gmail watches expire in <=7 days and Graph subscriptions in <=3 days (tracked per-row in `connected_accounts.watch_expires_at`, added by migration 0013). This route re-registers anything due, guarded by a `CRON_SECRET` bearer check. Nothing calls it on a schedule yet -- wiring that up (Vercel Cron via `vercel.json`, or Supabase `pg_cron`+`pg_net` calling the deployed URL) is itself blocked on the same missing deployed URL.
+- **Renewal** (`app/api/cron/renew-watches`): Gmail watches expire in <=7 days and Graph subscriptions in <=3 days (tracked per-row in `connected_accounts.watch_expires_at`, added by migration 0013). This route re-registers anything due, guarded by a `CRON_SECRET` bearer check. On Vercel, `vercel.json` schedules it daily (see "Deploying to Vercel" below); a Supabase `pg_cron`+`pg_net` job calling the same URL with the bearer header works too.
 
 ## Running
 
@@ -173,6 +173,37 @@ If a sign-in email doesn't show up in Mailpit:
 
 For a real deployment, Supabase Cloud's default mailer is also rate-limited and meant for testing only — configure a custom SMTP provider under your Supabase project's Auth settings (`supabase/config.toml`'s commented-out `[auth.email.smtp]` block shows the shape) to have magic links actually land in users' real inboxes in production.
 
+## Deploying to Vercel
+
+The app deploys to Vercel as a standard Next.js project against the `mimus-staging` Supabase project. Nothing in the code is tied to a host: every URL comes from env vars or the incoming request.
+
+**What `vercel.json` schedules** (both need `CRON_SECRET`; Vercel sends it as `Authorization: Bearer ...` automatically):
+
+| Job                          | Schedule    | What it does                                                                                                                                                       |
+| ---------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/api/cron/renew-watches`    | daily 06:00 | Re-registers Gmail watches and Graph subscriptions before they expire.                                                                                             |
+| `/api/cron/resume-backfills` | daily 06:30 | Restarts first imports that a function time limit cut off. The connect callbacks run the 90-day import with `maxDuration = 300`, and a busy inbox can take longer. |
+
+**Hobby vs Pro.** Hobby caps functions at 300 seconds and cron jobs at once a day, so on Hobby a large inbox finishes importing over a few days. On Pro, change the `resume-backfills` schedule to `*/15 * * * *` and raise `maxDuration` to 800 in `app/api/cron/resume-backfills/route.ts` and the four `app/api/connectors/*/callback/route.ts` files.
+
+**Steps (repo owner):**
+
+1. **Database.** Apply any new migrations to `mimus-staging`: `npx supabase db push --linked`. Never run `db reset` against it.
+2. **Vercel project.** [vercel.com/new](https://vercel.com/new) → import `iwhozaifa/mimus`. Framework preset: Next.js (detected). Leave Fluid Compute on.
+3. **Environment variables** (Production), set _before_ the first build, because `NEXT_PUBLIC_*` values are baked in at build time:
+   - `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`: from the `mimus-staging` project's API settings.
+   - `TOKEN_ENCRYPTION_KEY` (`openssl rand -base64 32`; keep it, because rows encrypted with it can't be read without it) and `CRON_SECRET` (`openssl rand -hex 32`).
+   - `OPENAI_API_KEY`.
+   - `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, and `GOOGLE_OAUTH_REDIRECT_URI=https://<your-app>.vercel.app/api/connectors/google/callback`.
+   - Optional: `RESEND_API_KEY`/`RESEND_FROM_EMAIL` for invite emails, and the Microsoft, Slack and Calendly variables once those apps exist, each with its redirect URI on the same domain.
+4. **Supabase Auth URLs** (dashboard → `mimus-staging` → Authentication → URL Configuration): set Site URL to `https://<your-app>.vercel.app` and add `https://<your-app>.vercel.app/auth/callback` to Redirect URLs. Supabase's built-in email sender is heavily rate-limited; for demos, add custom SMTP (e.g. Resend) under Authentication → Emails so magic links aren't blocked.
+5. **Google Cloud Console.** Add `https://<your-app>.vercel.app/api/connectors/google/callback` to the OAuth client's Authorized redirect URIs. Add every demo user under Audience → Test users until the app is verified.
+6. **Redeploy** so the build picks up the variables, then smoke-test: sign in → Connect Google → Allow sending and booking → Ask → Propose meeting times → Approve. In Vercel's Settings → Cron Jobs, "Run" on each job should return 200.
+
+**Preview deployments.** Magic links work on previews if Supabase's Redirect URLs also allow `https://*-<your-team>.vercel.app/**`. Connecting accounts only works on the production domain, since each provider has one registered redirect URI.
+
+**Still not live after deploying:** new mail streaming in. That needs the Pub/Sub topic and the push variables in "Outstanding setup" item 7–8. Until then, mail is imported once at connect.
+
 ## Outstanding setup (needs the repo owner)
 
 Code-complete work the repo owner still needs to act on — nothing here blocks further development, but each is needed before the corresponding feature can be used end-to-end:
@@ -184,7 +215,7 @@ Code-complete work the repo owner still needs to act on — nothing here blocks 
 5. **Slack app**, for live testing of the Slack connector — see "Enabling Slack for users" under "Slack connector" above for the scopes, redirect URLs and distribution setting. Provide `SLACK_CLIENT_ID`/`SLACK_CLIENT_SECRET`, plus the Signing Secret from Basic Information for `SLACK_SIGNING_SECRET`. No bot token is needed: each Slack workspace's bot token is captured when someone connects it.
 6. **Calendly OAuth app**, for live testing of the Calendly connector — [calendly.com](https://calendly.com) → Integrations → API & Webhooks → OAuth. Provide `CALENDLY_CLIENT_ID`/`CALENDLY_CLIENT_SECRET` and register redirect URI `http://127.0.0.1:3000/api/connectors/calendly/callback`.
 7. **Google Cloud Pub/Sub topic**, for live Gmail push notifications (not needed for OAuth or backfill) — a topic plus a publish IAM binding for `gmail-api-push@system.gserviceaccount.com`. Set `GOOGLE_PUBSUB_TOPIC`.
-8. **A deployed public HTTPS URL** (e.g. Vercel) — required before any provider's webhook subscription can be registered or configured at all (Gmail `watch()`, Graph `/subscriptions`, Slack's Event Subscriptions Request URL set once in the Slack app dashboard from item 5, and Calendly's per-account subscriptions registered automatically after connect), and before the renewal cron (`app/api/cron/renew-watches`) can actually be scheduled against anything. The webhook/renewal code itself is done (see "Push notifications and renewal" and the Calendly connector section above) — this is the one thing blocking all of it from running for real. Once it exists: set `GOOGLE_PUBSUB_AUDIENCE`, `MICROSOFT_GRAPH_NOTIFICATION_URL`, `MICROSOFT_GRAPH_CLIENT_STATE`, `CALENDLY_WEBHOOK_URL`, and `CALENDLY_WEBHOOK_SIGNING_KEY` and `CRON_SECRET`, point the Slack app's Event Subscriptions at `<your-url>/api/webhooks/slack/events`, then add a scheduler (Vercel Cron via `vercel.json`, or Supabase `pg_cron`+`pg_net`) that `POST`s `/api/cron/renew-watches` with `Authorization: Bearer $CRON_SECRET` on a recurring basis (daily is enough margin for Gmail/Graph's renewal windows). Calendly's subscriptions don't expire, so they're registered once automatically right after connect (`app/api/connectors/calendly/callback/route.ts`) rather than needing this cron at all — see the note under "Calendly connector" above.
+8. **A deployed public HTTPS URL** — see "Deploying to Vercel" above for getting one; the cron jobs are already scheduled in `vercel.json`. Required before any provider's webhook subscription can be registered or configured at all (Gmail `watch()`, Graph `/subscriptions`, Slack's Event Subscriptions Request URL set once in the Slack app dashboard from item 5, and Calendly's per-account subscriptions registered automatically after connect), and before the renewal cron (`app/api/cron/renew-watches`) can actually be scheduled against anything. The webhook/renewal code itself is done (see "Push notifications and renewal" and the Calendly connector section above) — this is the one thing blocking all of it from running for real. Once it exists: set `GOOGLE_PUBSUB_AUDIENCE`, `MICROSOFT_GRAPH_NOTIFICATION_URL`, `MICROSOFT_GRAPH_CLIENT_STATE`, `CALENDLY_WEBHOOK_URL`, and `CALENDLY_WEBHOOK_SIGNING_KEY` and `CRON_SECRET`, point the Slack app's Event Subscriptions at `<your-url>/api/webhooks/slack/events`, and the daily `/api/cron/renew-watches` job in `vercel.json` keeps the watches alive (daily is enough margin for Gmail/Graph's renewal windows). Calendly's subscriptions don't expire, so they're registered once automatically right after connect (`app/api/connectors/calendly/callback/route.ts`) rather than needing this cron at all — see the note under "Calendly connector" above.
 
 ## Pages
 
